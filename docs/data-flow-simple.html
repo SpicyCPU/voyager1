@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Voyager 1 — Data Flow</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #f8f9fa;
+    color: #1a1a1a;
+    min-height: 100vh;
+    padding: 48px 32px;
+  }
+
+  h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { font-size: 13px; color: #888; margin-bottom: 48px; }
+
+  /* Main flow container */
+  .flow {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+
+  /* Node */
+  .node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 140px;
+    flex-shrink: 0;
+  }
+
+  .node-box {
+    width: 120px;
+    border-radius: 10px;
+    padding: 14px 12px;
+    text-align: center;
+    border: 1.5px solid;
+  }
+
+  .node-icon {
+    font-size: 24px;
+    margin-bottom: 6px;
+    line-height: 1;
+  }
+
+  .node-name {
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 2px;
+    line-height: 1.3;
+  }
+
+  .node-sub {
+    font-size: 10px;
+    opacity: 0.6;
+    line-height: 1.3;
+  }
+
+  /* Data tags below each node */
+  .node-data {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 130px;
+  }
+
+  .data-tag {
+    font-size: 10px;
+    font-weight: 500;
+    padding: 3px 8px;
+    border-radius: 20px;
+    background: #f0f0f0;
+    color: #555;
+    white-space: nowrap;
+  }
+
+  /* Arrow connector */
+  .arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-top: 32px;
+    width: 52px;
+    flex-shrink: 0;
+    gap: 2px;
+  }
+
+  .arrow-line {
+    width: 100%;
+    height: 1.5px;
+    background: #ccc;
+    position: relative;
+  }
+
+  .arrow-label {
+    font-size: 9px;
+    color: #aaa;
+    text-align: center;
+    line-height: 1.4;
+    margin-top: 4px;
+    white-space: nowrap;
+  }
+
+  /* Arrow head via border trick */
+  .arrow-head {
+    width: 0; height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 7px solid #ccc;
+    margin-left: -1px;
+    margin-top: -3px;
+    flex-shrink: 0;
+  }
+
+  .arrow-inner {
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+
+  /* Color themes */
+  .theme-signal  { background: #f0fdf4; border-color: #86efac; }
+  .theme-signal .node-name { color: #166534; }
+
+  .theme-app     { background: #eff6ff; border-color: #93c5fd; }
+  .theme-app .node-name { color: #1e40af; }
+
+  .theme-ai      { background: #fdf4ff; border-color: #d8b4fe; }
+  .theme-ai .node-name { color: #6b21a8; }
+
+  .theme-db      { background: #fff7ed; border-color: #fdba74; }
+  .theme-db .node-name { color: #9a3412; }
+
+  .theme-out     { background: #fefce8; border-color: #fde047; }
+  .theme-out .node-name { color: #854d0e; }
+
+  /* Data tag colors */
+  .dt-person  { background: #fee2e2; color: #991b1b; }
+  .dt-signal  { background: #dcfce7; color: #166534; }
+  .dt-usage   { background: #dbeafe; color: #1e40af; }
+  .dt-draft   { background: #f3e8ff; color: #6b21a8; }
+  .dt-context { background: #fff7ed; color: #9a3412; }
+  .dt-insight { background: #fefce8; color: #854d0e; }
+
+  /* Bottom note */
+  .note {
+    max-width: 1000px;
+    margin: 48px auto 0;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+  }
+
+  .note-item {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .note-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #374151;
+    margin-bottom: 6px;
+  }
+
+  .note-body {
+    font-size: 10px;
+    color: #6b7280;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<h1>Voyager 1 — Data Flow</h1>
+<p class="subtitle">High-level view of data moving through each system</p>
+
+<div class="flow">
+
+  <!-- NODE 1: Signal Sources -->
+  <div class="node">
+    <div class="node-box theme-signal">
+      <div class="node-icon">📡</div>
+      <div class="node-name">Signal Sources</div>
+      <div class="node-sub">Common Room · Omni · Salesforce · Manual</div>
+    </div>
+    <div class="node-data">
+      <span class="data-tag dt-signal">Behavioral signals</span>
+      <span class="data-tag dt-signal">Pages visited</span>
+      <span class="data-tag dt-signal">Trigger type</span>
+      <span class="data-tag dt-usage">Platform usage</span>
+      <span class="data-tag dt-usage">Subscription tier</span>
+      <span class="data-tag dt-usage">Campaign membership</span>
+      <span class="data-tag dt-context">Account ownership*</span>
+    </div>
+  </div>
+
+  <!-- ARROW 1 -->
+  <div class="arrow">
+    <div class="arrow-inner">
+      <div class="arrow-line"></div>
+      <div class="arrow-head"></div>
+    </div>
+    <div class="arrow-label">webhook /<br/>form submit</div>
+  </div>
+
+  <!-- NODE 2: Voyager 1 -->
+  <div class="node">
+    <div class="node-box theme-app">
+      <div class="node-icon">🚀</div>
+      <div class="node-name">Voyager 1</div>
+      <div class="node-sub">Next.js on Vercel</div>
+    </div>
+    <div class="node-data">
+      <span class="data-tag dt-signal">Contact profiles</span>
+      <span class="data-tag dt-signal">Signal history</span>
+      <span class="data-tag dt-context">Account research</span>
+      <span class="data-tag dt-context">Enrichment context</span>
+      <span class="data-tag dt-draft">Email drafts</span>
+      <span class="data-tag dt-draft">LinkedIn drafts</span>
+    </div>
+  </div>
+
+  <!-- ARROW 2 -->
+  <div class="arrow">
+    <div class="arrow-inner">
+      <div class="arrow-line"></div>
+      <div class="arrow-head"></div>
+    </div>
+    <div class="arrow-label">contact + context<br/>for research</div>
+  </div>
+
+  <!-- NODE 3: Anthropic -->
+  <div class="node">
+    <div class="node-box theme-ai">
+      <div class="node-icon">◆</div>
+      <div class="node-name">Anthropic</div>
+      <div class="node-sub">Claude API (Enterprise)</div>
+    </div>
+    <div class="node-data">
+      <span class="data-tag dt-signal">Contact context</span>
+      <span class="data-tag dt-signal">Signal summary</span>
+      <span class="data-tag dt-context">Company research</span>
+      <span class="data-tag dt-draft">Draft generation</span>
+      <span class="data-tag dt-draft">Style refinement</span>
+      <span class="data-tag dt-insight">Pattern insights</span>
+    </div>
+  </div>
+
+  <!-- ARROW 3 (bidirectional — back to Voyager) -->
+  <div class="arrow">
+    <div class="arrow-inner">
+      <div class="arrow-line"></div>
+      <div class="arrow-head"></div>
+    </div>
+    <div class="arrow-label">drafts +<br/>research back</div>
+  </div>
+
+  <!-- NODE 4: Turso DB -->
+  <div class="node">
+    <div class="node-box theme-db">
+      <div class="node-icon">🗄️</div>
+      <div class="node-name">Turso DB</div>
+      <div class="node-sub">SQLite · AWS us-east-1</div>
+    </div>
+    <div class="node-data">
+      <span class="data-tag dt-signal">Contact records</span>
+      <span class="data-tag dt-signal">Signal history</span>
+      <span class="data-tag dt-draft">All drafts</span>
+      <span class="data-tag dt-context">Enrichment data</span>
+      <span class="data-tag dt-insight">Refinement log</span>
+      <span class="data-tag dt-insight">Writing rules</span>
+    </div>
+  </div>
+
+  <!-- ARROW 4 -->
+  <div class="arrow">
+    <div class="arrow-inner">
+      <div class="arrow-line"></div>
+      <div class="arrow-head"></div>
+    </div>
+    <div class="arrow-label">rep reviews &amp;<br/>manually sends</div>
+  </div>
+
+  <!-- NODE 5: Output -->
+  <div class="node">
+    <div class="node-box theme-out">
+      <div class="node-icon">📬</div>
+      <div class="node-name">Sent Log</div>
+      <div class="node-sub">Tentative — Google Sheets or internal DB</div>
+    </div>
+    <div class="node-data">
+      <span class="data-tag dt-signal">Contact identifiers</span>
+      <span class="data-tag dt-signal">Company</span>
+      <span class="data-tag dt-signal">Sent timestamp</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- Bottom notes -->
+<div class="note">
+  <div class="note-item">
+    <div class="note-title">📡 Signal Sources</div>
+    <div class="note-body">
+      Common Room will push real-time behavioral signals. Omni will deliver daily platform sign-up data. Salesforce marketing campaigns will surface campaign members and engagement history. Reps will add leads manually. All routes will converge into Voyager 1.<br/><br/>
+      <span style="color:#9a3412;">* Account ownership mapping (Salesforce AE assignment, territory, open opportunities) will be a future integration.</span>
+    </div>
+  </div>
+  <div class="note-item">
+    <div class="note-title">🚀 Voyager 1</div>
+    <div class="note-body">
+      Voyager 1 will orchestrate the full workflow. It will queue leads for rep review, manage the draft lifecycle, and store enrichment context added by the rep (Common Room paste, Salesforce notes).
+    </div>
+  </div>
+  <div class="note-item">
+    <div class="note-title">◆ Anthropic</div>
+    <div class="note-body">
+      Anthropic will receive contact and account context, research the company via web search, generate personalized email and LinkedIn drafts, and refine on rep feedback. The Enterprise contract will ensure no training data usage and no retention after request completion.
+    </div>
+  </div>
+  <div class="note-item">
+    <div class="note-title">🗄️ Turso DB</div>
+    <div class="note-body">
+      Turso will serve as the persistent store for all contacts, accounts, drafts, and signal history. Every refinement the rep makes will be logged and fed back into future generations as style examples.
+    </div>
+  </div>
+  <div class="note-item">
+    <div class="note-title">📬 Sent Log</div>
+    <div class="note-body">
+      When a rep clicks Send, outreach activity will be logged for pipeline tracking. Minimal data — contact identifiers, company, timestamp.<br/><br/>
+      <span style="color:#854d0e;">Tentative: destination TBD — Google Sheets via Apps Script or an internal DB. Internal DB would be preferable at scale.</span><br/><br/>
+      <strong>Design principle:</strong> The rep will always review drafts before sending. Email send will never be automated. Voyager 1 will not have a direct integration into Gmail or any email client — the rep will copy the draft and send manually.
+    </div>
+  </div>
+</div>
+
+<!-- Security section -->
+<div style="max-width:1000px; margin: 40px auto 0;">
+  <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#888; margin-bottom:12px; padding-bottom:6px; border-bottom:1px solid #e5e7eb;">
+    Security Assumptions &amp; Safeguards
+  </div>
+  <div style="display:grid; grid-template-columns: repeat(3,1fr); gap:12px;">
+
+    <div style="background:white; border:1px solid #e5e7eb; border-radius:8px; padding:14px;">
+      <div style="font-size:11px; font-weight:700; color:#374151; margin-bottom:8px;">🔐 Access Control</div>
+      <ul style="font-size:10px; color:#6b7280; line-height:1.9; padding-left:14px;">
+        <li>A single shared password (SITE_SECRET) will be required to access the app</li>
+        <li>Sessions will be stored in an httpOnly, secure, sameSite=strict cookie — not accessible to JavaScript</li>
+        <li>Middleware will enforce auth on every route and will fail closed if the secret is not configured</li>
+        <li>Ingest webhooks will use a separate secret (INGEST_SECRET) validated on every incoming request</li>
+      </ul>
+    </div>
+
+    <div style="background:white; border:1px solid #e5e7eb; border-radius:8px; padding:14px;">
+      <div style="font-size:11px; font-weight:700; color:#374151; margin-bottom:8px;">🗝️ Secret Management</div>
+      <ul style="font-size:10px; color:#6b7280; line-height:1.9; padding-left:14px;">
+        <li>All secrets will be stored in Vercel encrypted environment variables — never in source code or git</li>
+        <li>Local development will use .env.local, which will be gitignored by default</li>
+        <li>Database credentials (URL + auth token) will be server-side only — never exposed to the browser</li>
+        <li>The sent log webhook URL will be server-side only — never sent to the client</li>
+      </ul>
+    </div>
+
+    <div style="background:white; border:1px solid #e5e7eb; border-radius:8px; padding:14px;">
+      <div style="font-size:11px; font-weight:700; color:#374151; margin-bottom:8px;">🗄️ Database</div>
+      <ul style="font-size:10px; color:#6b7280; line-height:1.9; padding-left:14px;">
+        <li>The database will require a signed JWT token for every connection — no unauthenticated access will be possible</li>
+        <li>Data will be encrypted at rest</li>
+        <li>Tokens will be immediately invalidatable and rotatable if compromised</li>
+        <li>Lead deletion will be soft — records will be flagged rather than permanently removed, preserving an audit trail</li>
+      </ul>
+    </div>
+
+    <div style="background:white; border:1px solid #e5e7eb; border-radius:8px; padding:14px;">
+      <div style="font-size:11px; font-weight:700; color:#374151; margin-bottom:8px;">◆ AI Data Handling</div>
+      <ul style="font-size:10px; color:#6b7280; line-height:1.9; padding-left:14px;">
+        <li>The Anthropic Enterprise contract will ensure contact data sent to the API will not be used for model training</li>
+        <li>There will be no data retention on Anthropic's side after request completion</li>
+        <li>All Anthropic API calls will be server-side — the API key will never be exposed to the browser</li>
+      </ul>
+    </div>
+
+    <div style="background:white; border:1px solid #e5e7eb; border-radius:8px; padding:14px;">
+      <div style="font-size:11px; font-weight:700; color:#374151; margin-bottom:8px;">🌍 GDPR / Compliance</div>
+      <ul style="font-size:10px; color:#6b7280; line-height:1.9; padding-left:14px;">
+        <li>The Anthropic Enterprise agreement will cover data processing for EMEA contacts</li>
+        <li>A Vercel DPA will be required — available self-serve at vercel.com/legal/dpa</li>
+        <li>A Turso DPA will be required — a DB migration to an alternative provider may be needed if unavailable</li>
+        <li>Legitimate interests will serve as the legal basis for B2B outreach to contacts showing intent signals</li>
+      </ul>
+    </div>
+
+    <div style="background:white; border:1px solid #e5e7eb; border-radius:8px; padding:14px;">
+      <div style="font-size:11px; font-weight:700; color:#374151; margin-bottom:8px;">⚠️ Known Gaps</div>
+      <ul style="font-size:10px; color:#6b7280; line-height:1.9; padding-left:14px;">
+        <li>Single shared password — per-user accounts and action-level audit logging would be needed at larger team scale</li>
+        <li>A hard-delete / right-to-erasure path will be needed to support GDPR erasure requests</li>
+        <li>A cross-border transfer mechanism will need to be formalised for EMEA data given US-region database hosting</li>
+        <li>Delete protection on the database will need to be enabled to prevent accidental data loss</li>
+      </ul>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Voyager 1 — Architecture Diagram</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0f1923;
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 32px 24px;
+  }
+  h1 {
+    font-size: 18px; font-weight: 700; color: #fff;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    font-size: 12px; color: #64748b; margin-bottom: 32px;
+  }
+
+  /* Layout */
+  .diagram {
+    display: grid;
+    grid-template-columns: 200px 1fr 200px;
+    grid-template-rows: auto auto auto auto;
+    gap: 0;
+    max-width: 1100px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  /* Cards */
+  .card {
+    border-radius: 8px;
+    padding: 12px 14px;
+    font-size: 12px;
+    position: relative;
+  }
+  .card-title {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 6px; opacity: 0.7;
+  }
+  .card-name {
+    font-size: 13px; font-weight: 700; margin-bottom: 4px;
+  }
+  .card-detail {
+    font-size: 11px; opacity: 0.65; line-height: 1.5;
+  }
+
+  /* Zone colors */
+  .zone-ingest   { background: #1a2a1a; border: 1px solid #2d5a2d; }
+  .zone-store    { background: #1a1a2e; border: 1px solid #2d2d5a; }
+  .zone-process  { background: #2a1a1a; border: 1px solid #5a2d2d; }
+  .zone-external { background: #1a2a2a; border: 1px solid #2d5a5a; }
+  .zone-output   { background: #2a2a1a; border: 1px solid #5a5a2d; }
+  .zone-auth     { background: #2a1a2a; border: 1px solid #5a2d5a; }
+
+  /* Colors */
+  .c-green  { color: #4ade80; }
+  .c-blue   { color: #60a5fa; }
+  .c-red    { color: #f87171; }
+  .c-teal   { color: #2dd4bf; }
+  .c-yellow { color: #facc15; }
+  .c-purple { color: #c084fc; }
+  .c-orange { color: #fb923c; }
+
+  /* Section headers */
+  .section-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.1em; color: #475569; margin-bottom: 10px;
+    padding-bottom: 6px; border-bottom: 1px solid #1e293b;
+  }
+
+  /* Main layout sections */
+  .col {
+    display: flex; flex-direction: column; gap: 10px; padding: 16px;
+  }
+  .col-left  { grid-column: 1; }
+  .col-mid   { grid-column: 2; }
+  .col-right { grid-column: 3; }
+
+  /* Flow row */
+  .flow-row {
+    display: flex; align-items: stretch; gap: 0;
+    border: 1px solid #1e293b; border-radius: 10px;
+    overflow: hidden; margin-bottom: 2px;
+  }
+  .flow-section {
+    padding: 14px 16px; flex: 1;
+  }
+  .flow-arrow {
+    display: flex; align-items: center; justify-content: center;
+    width: 36px; flex-shrink: 0;
+    font-size: 16px; color: #475569;
+    background: #0f1923;
+    border-left: 1px solid #1e293b;
+    border-right: 1px solid #1e293b;
+  }
+
+  /* Tags */
+  .tag {
+    display: inline-block; font-size: 10px; font-weight: 600;
+    padding: 1px 6px; border-radius: 4px; margin: 2px 2px 0 0;
+  }
+  .tag-pii    { background: #7f1d1d; color: #fca5a5; }
+  .tag-secret { background: #1e3a5f; color: #93c5fd; }
+  .tag-cached { background: #1a3a1a; color: #86efac; }
+  .tag-rt     { background: #3a2a00; color: #fde68a; }
+
+  /* Data entity table */
+  .entity-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .entity-table th {
+    text-align: left; padding: 6px 8px; color: #64748b;
+    border-bottom: 1px solid #1e293b; font-weight: 600;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .entity-table td { padding: 5px 8px; border-bottom: 1px solid #0f1923; }
+  .entity-table tr:last-child td { border-bottom: none; }
+
+  /* Legend */
+  .legend {
+    display: flex; gap: 16px; flex-wrap: wrap;
+    margin-top: 24px; padding: 12px 16px;
+    background: #0a111a; border-radius: 8px; border: 1px solid #1e293b;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #94a3b8; }
+  .legend-dot  { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+  /* Connector lines via borders */
+  .connector {
+    width: 100%; display: flex; justify-content: center;
+    padding: 4px 0; color: #334155; font-size: 18px; line-height: 1;
+  }
+
+  hr.divider {
+    border: none; border-top: 1px solid #1e293b; margin: 20px 0;
+  }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; }
+</style>
+</head>
+<body>
+
+<h1>Voyager 1 — Data Architecture</h1>
+<p class="subtitle">Data movement, PII surface area, and external service dependencies · Generated April 2026</p>
+
+<!-- ─── SECTION 1: INGEST ─────────────────────────────────────── -->
+<div style="max-width:1100px; margin: 0 auto;">
+
+  <div class="section-label">1 · Ingest — Where PII Enters</div>
+  <div class="grid-4" style="margin-bottom: 10px;">
+
+    <div class="card zone-ingest">
+      <div class="card-title c-green">Common Room</div>
+      <div class="card-name">Webhook</div>
+      <div class="card-detail">Real-time push on signal trigger</div>
+      <div style="margin-top:6px;">
+        <span class="tag tag-secret">x-commonroom-webhook-secret</span>
+        <span class="tag tag-pii">name · email · LinkedIn</span>
+        <span class="tag tag-pii">visited URLs · company</span>
+        <span class="tag tag-rt">real-time</span>
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:#4ade80;">→ /api/ingest/common-room</div>
+    </div>
+
+    <div class="card zone-ingest">
+      <div class="card-title c-green">Omni (Studio Sign-ups)</div>
+      <div class="card-name">Apps Script → Webhook</div>
+      <div class="card-detail">Google Sheets daily overwrite at 6AM</div>
+      <div style="margin-top:6px;">
+        <span class="tag tag-secret">x-ingest-secret</span>
+        <span class="tag tag-pii">name · email · tier</span>
+        <span class="tag tag-pii">requests · federation data</span>
+        <span class="tag tag-rt">daily batch</span>
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:#4ade80;">→ /api/ingest/omni-sheet</div>
+    </div>
+
+    <div class="card zone-ingest">
+      <div class="card-title c-green">CSV Upload</div>
+      <div class="card-name">Omni Export</div>
+      <div class="card-detail">Manual multipart form upload of Omni CSV</div>
+      <div style="margin-top:6px;">
+        <span class="tag tag-secret">session cookie</span>
+        <span class="tag tag-pii">same fields as Omni</span>
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:#4ade80;">→ /api/import/omni</div>
+    </div>
+
+    <div class="card zone-ingest">
+      <div class="card-title c-green">Manual Entry</div>
+      <div class="card-name">Rep via UI Form</div>
+      <div class="card-detail">New Lead form in browser</div>
+      <div style="margin-top:6px;">
+        <span class="tag tag-secret">session cookie</span>
+        <span class="tag tag-pii">name · title · email</span>
+        <span class="tag tag-pii">company · LinkedIn · URLs</span>
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:#4ade80;">→ /api/leads (POST)</div>
+    </div>
+
+  </div>
+
+  <div class="connector">↓</div>
+
+  <!-- ─── SECTION 2: DATABASE ─────────────────────────────────── -->
+  <div class="section-label">2 · Storage — Turso (libSQL · AWS us-east-1) <span style="color:#f87171; font-weight:400; font-size:10px;">⚠ No DPA — see compliance note</span></div>
+  <div class="grid-2" style="margin-bottom: 10px;">
+
+    <div class="card zone-store">
+      <div class="card-title c-blue">Account</div>
+      <div style="font-size:11px; line-height:1.8; color:#cbd5e1;">
+        <span style="color:#60a5fa;">id</span> · company (unique) · createdAt · updatedAt<br/>
+        webResearch · webResearchAt <span class="tag tag-cached">14d cache</span><br/>
+        jobSignals · edgarData · driveData · accountNotes<br/>
+        <span class="tag tag-pii" style="font-size:10px;">crEnrichment</span> — Common Room paste (manual)<br/>
+        <span class="tag tag-pii" style="font-size:10px;">sfContext</span> — Salesforce notes (manual)<br/>
+        industry · headcount · companyType <span class="tag tag-cached">extracted</span><br/>
+        tracked · trackedAt · trackReason · sourcedVia
+      </div>
+    </div>
+
+    <div class="card zone-store">
+      <div class="card-title c-blue">Lead</div>
+      <div style="font-size:11px; line-height:1.8; color:#cbd5e1;">
+        <span style="color:#60a5fa;">id</span> · accountId (FK) · createdAt · updatedAt<br/>
+        <span class="tag tag-pii" style="font-size:10px;">name · title · email · linkedinUrl</span><br/>
+        visitedUrls · extraContext · signalType<br/>
+        signalHistory (JSON) · lastSignalAt<br/>
+        researchSummary · emailSubject · emailDraft · linkedinNote<br/>
+        draftStatus · outreachStatus · sentAt · notes<br/>
+        <span style="color:#94a3b8;">deletedAt · deleteReason</span> <span class="tag tag-cached">soft delete</span>
+      </div>
+    </div>
+
+    <div class="card zone-store">
+      <div class="card-title c-blue">RefinementExample</div>
+      <div style="font-size:11px; line-height:1.8; color:#cbd5e1;">
+        <span style="color:#60a5fa;">id</span> · createdAt · leadId · field<br/>
+        feedback (rep's instruction to AI)<br/>
+        <span class="tag tag-pii" style="font-size:10px;">before</span> — original draft (contains PII)<br/>
+        <span class="tag tag-pii" style="font-size:10px;">after</span> — refined draft (contains PII)
+      </div>
+    </div>
+
+    <div class="card zone-store">
+      <div class="card-title c-blue">AppSettings</div>
+      <div style="font-size:11px; line-height:1.8; color:#cbd5e1;">
+        <span style="color:#60a5fa;">id</span> = "default" (single row)<br/>
+        rules (JSON array) — writing rules injected into every draft generation<br/>
+        updatedAt<br/>
+        <span style="color:#64748b; font-size:10px;">No PII — config only</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="connector">↓</div>
+
+  <!-- ─── SECTION 3: AI PROCESSING ────────────────────────────── -->
+  <div class="section-label">3 · AI Processing — Anthropic API <span style="color:#4ade80; font-weight:400; font-size:10px;">✓ Enterprise contract · No training data usage · No retention</span></div>
+  <div class="grid-3" style="margin-bottom: 10px;">
+
+    <div class="card zone-process">
+      <div class="card-title c-red">Research Step</div>
+      <div class="card-name" style="font-size:12px;">/api/leads/[id]/generate (step 1)</div>
+      <div style="margin-top:8px; font-size:11px; color:#fca5a5; line-height:1.6;">
+        <strong>PII sent to Anthropic:</strong><br/>
+        company name · signal type · visited URLs<br/>
+        account notes · crEnrichment · sfContext<br/>
+        existing research (if any)
+      </div>
+      <div style="margin-top:8px; font-size:11px; color:#94a3b8;">
+        Tool: web_search · 60s timeout · 2000 tokens<br/>
+        <span class="tag tag-cached">Cached 14 days on account</span>
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:#f87171;">← writes: webResearch, industry, headcount, companyType</div>
+    </div>
+
+    <div class="card zone-process">
+      <div class="card-title c-red">Draft Generation</div>
+      <div class="card-name" style="font-size:12px;">/api/leads/[id]/generate (step 2)</div>
+      <div style="margin-top:8px; font-size:11px; color:#fca5a5; line-height:1.6;">
+        <strong>PII sent to Anthropic:</strong><br/>
+        name · title · company · LinkedIn URL<br/>
+        research summary · crEnrichment · sfContext<br/>
+        visitedUrls · account notes<br/>
+        Last 5 refinement examples (before/after — contain PII)
+      </div>
+      <div style="margin-top:8px; font-size:11px; color:#94a3b8;">
+        No tools · 30s timeout · 1500 tokens<br/>
+        + Apollo product context · writing rules
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:#f87171;">← writes: emailSubject, emailDraft, linkedinNote</div>
+    </div>
+
+    <div class="card zone-process">
+      <div class="card-title c-red">Refinement</div>
+      <div class="card-name" style="font-size:12px;">/api/leads/[id]/refine</div>
+      <div style="margin-top:8px; font-size:11px; color:#fca5a5; line-height:1.6;">
+        <strong>PII sent to Anthropic:</strong><br/>
+        current draft text (contains name, company)<br/>
+        rep's feedback instruction
+      </div>
+      <div style="margin-top:8px; font-size:11px; color:#94a3b8;">
+        No tools · 30s timeout · 800 tokens
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:#f87171;">← writes: emailDraft or linkedinNote<br/>← also saves to RefinementExample table</div>
+    </div>
+
+    <div class="card zone-process" style="grid-column: span 1;">
+      <div class="card-title c-red">Account Research (manual refresh)</div>
+      <div class="card-name" style="font-size:12px;">/api/accounts/[id]/research</div>
+      <div style="margin-top:8px; font-size:11px; color:#fca5a5; line-height:1.6;">
+        <strong>PII sent to Anthropic:</strong><br/>
+        company name · account notes · sourcedVia
+      </div>
+      <div style="margin-top:8px; font-size:11px; color:#94a3b8;">
+        Two calls: company research + job signals<br/>
+        No tools · 30s timeout · 1000 tokens each
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:#f87171;">← writes: webResearch, jobSignals, metadata</div>
+    </div>
+
+    <div class="card zone-process" style="grid-column: span 1;">
+      <div class="card-title c-red">Insights / Patterns</div>
+      <div class="card-name" style="font-size:12px;">/api/insights</div>
+      <div style="margin-top:8px; font-size:11px; color:#fca5a5; line-height:1.6;">
+        <strong>PII sent to Anthropic:</strong><br/>
+        Aggregated — email subjects (sample)<br/>
+        refinement feedback text<br/>
+        industry / headcount breakdowns (no direct PII)
+      </div>
+      <div style="margin-top:8px; font-size:11px; color:#94a3b8;">
+        No tools · 45s timeout · 1200 tokens
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:#f87171;">→ returns: conversational brief (not stored)</div>
+    </div>
+
+    <div class="card zone-process" style="grid-column: span 1;">
+      <div class="card-title c-red">Rule Suggestion</div>
+      <div class="card-name" style="font-size:12px;">/api/settings/suggest-rule</div>
+      <div style="margin-top:8px; font-size:11px; color:#fca5a5; line-height:1.6;">
+        <strong>PII sent to Anthropic:</strong><br/>
+        rep feedback text (minimal PII risk)<br/>
+        current rules list
+      </div>
+      <div style="margin-top:8px; font-size:11px; color:#94a3b8;">
+        No tools · 30s timeout · 300 tokens
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:#f87171;">→ returns: suggested rule (not auto-saved)</div>
+    </div>
+
+  </div>
+
+  <div class="connector">↓</div>
+
+  <!-- ─── SECTION 4: OUTPUT ────────────────────────────────────── -->
+  <div class="section-label">4 · Output & Send</div>
+  <div class="grid-2" style="margin-bottom: 10px;">
+
+    <div class="card zone-output">
+      <div class="card-title c-yellow">Rep Review (Browser)</div>
+      <div class="card-name" style="font-size:12px;">Voyager 1 UI (Vercel · voyager1-outreach.vercel.app)</div>
+      <div style="margin-top:8px; font-size:11px; color:#fde68a; line-height:1.6;">
+        Rep reviews draft · edits inline · refines with AI<br/>
+        Adds context (Common Room paste, Salesforce notes, visited URLs)<br/>
+        Clicks "Send &amp; Next →" to mark sent
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:#94a3b8;">Auth: session cookie (SITE_SECRET) · httpOnly · secure · sameSite=strict</div>
+      <div style="margin-top:4px; font-size:11px; color:#f87171;">⚠ Vercel — no DPA signed</div>
+    </div>
+
+    <div class="card zone-output">
+      <div class="card-title c-yellow">Google Sheet Log</div>
+      <div class="card-name" style="font-size:12px;">Apps Script Webhook (WEBHOOK_URL)</div>
+      <div style="margin-top:8px; font-size:11px; color:#fde68a; line-height:1.6;">
+        Triggered server-side on "Send" — never exposed to browser<br/>
+        <strong>Data sent:</strong> lead name · company · email · sentAt
+      </div>
+      <div style="margin-top:6px; font-size:11px; color:#94a3b8;">No auth on webhook — server-side call only · PII logged to Google Sheet</div>
+      <div style="margin-top:4px; font-size:11px; color:#f87171;">⚠ Google Workspace — check if covered under existing GSuite agreement</div>
+    </div>
+
+  </div>
+
+  <hr class="divider" />
+
+  <!-- ─── AUTH FLOW ────────────────────────────────────────────── -->
+  <div class="section-label">Auth &amp; Access Control</div>
+  <div class="grid-3" style="margin-bottom: 10px;">
+
+    <div class="card zone-auth">
+      <div class="card-title c-purple">Browser Session</div>
+      <div style="font-size:11px; color:#d8b4fe; line-height:1.6;">
+        Single shared password (SITE_SECRET)<br/>
+        Cookie: v1_session · 1 year · httpOnly · secure · sameSite=strict<br/>
+        Middleware validates on every request<br/>
+        Fails closed if SITE_SECRET not set
+      </div>
+    </div>
+
+    <div class="card zone-auth">
+      <div class="card-title c-purple">Ingest Webhooks</div>
+      <div style="font-size:11px; color:#d8b4fe; line-height:1.6;">
+        Common Room: x-commonroom-webhook-secret header<br/>
+        Omni Sheet: x-ingest-secret header<br/>
+        Generic: Authorization: Bearer header<br/>
+        All compared to INGEST_SECRET env var<br/>
+        Bypasses session auth (no cookie needed)
+      </div>
+    </div>
+
+    <div class="card zone-auth">
+      <div class="card-title c-purple">Env Var Secrets</div>
+      <div style="font-size:11px; color:#d8b4fe; line-height:1.6;">
+        ANTHROPIC_API_KEY — Anthropic auth<br/>
+        INGEST_SECRET — webhook auth<br/>
+        SITE_SECRET — login password + session value<br/>
+        WEBHOOK_URL — Google Sheet endpoint<br/>
+        DATABASE_URL + TURSO_AUTH_TOKEN — Turso<br/>
+        All stored in Vercel encrypted env vars
+      </div>
+    </div>
+
+  </div>
+
+  <hr class="divider" />
+
+  <!-- ─── EXTERNAL SERVICES ────────────────────────────────────── -->
+  <div class="section-label">External Services &amp; Compliance Status</div>
+  <div class="grid-4" style="margin-bottom: 10px;">
+
+    <div class="card zone-external">
+      <div class="card-title c-teal">Anthropic API</div>
+      <div style="font-size:11px; color:#5eead4; line-height:1.6;">
+        api.anthropic.com/v1/messages<br/>
+        Auth: ANTHROPIC_API_KEY<br/>
+        Receives: full lead + account PII in every generate/refine call
+      </div>
+      <div style="margin-top:6px; font-size:11px;">
+        <span style="color:#4ade80;">✓ Enterprise contract</span><br/>
+        <span style="color:#4ade80;">✓ No training data usage</span><br/>
+        <span style="color:#4ade80;">✓ No data retention</span><br/>
+        <span style="color:#94a3b8;">? DPA / BAA — confirm with rep</span>
+      </div>
+    </div>
+
+    <div class="card zone-external">
+      <div class="card-title c-teal">Turso (LibSQL)</div>
+      <div style="font-size:11px; color:#5eead4; line-height:1.6;">
+        libsql://voyager1-don-glunt.aws-us-east-1.turso.io<br/>
+        Region: AWS us-east-1 (US)<br/>
+        Auth: JWT token (TURSO_AUTH_TOKEN)<br/>
+        Stores: all PII, drafts, signal history
+      </div>
+      <div style="margin-top:6px; font-size:11px;">
+        <span style="color:#4ade80;">✓ Encrypted at rest</span><br/>
+        <span style="color:#4ade80;">✓ Token auth (no public access)</span><br/>
+        <span style="color:#f87171;">✗ No DPA signed</span><br/>
+        <span style="color:#f87171;">✗ US region (EMEA transfer gap)</span><br/>
+        <span style="color:#fde68a;">→ Contact support@turso.tech</span>
+      </div>
+    </div>
+
+    <div class="card zone-external">
+      <div class="card-title c-teal">Vercel</div>
+      <div style="font-size:11px; color:#5eead4; line-height:1.6;">
+        voyager1-outreach.vercel.app<br/>
+        Hosts: Next.js app + API routes<br/>
+        Stores: encrypted env vars<br/>
+        Logs: function invocations (may capture PII in errors)
+      </div>
+      <div style="margin-top:6px; font-size:11px;">
+        <span style="color:#4ade80;">✓ HTTPS enforced</span><br/>
+        <span style="color:#f87171;">✗ No DPA signed</span><br/>
+        <span style="color:#fde68a;">→ vercel.com/legal/dpa (5 min)</span>
+      </div>
+    </div>
+
+    <div class="card zone-external">
+      <div class="card-title c-teal">Google Sheets</div>
+      <div style="font-size:11px; color:#5eead4; line-height:1.6;">
+        Apps Script webhook (WEBHOOK_URL)<br/>
+        Receives: name · company · email · sentAt on every send<br/>
+        Used for: sent outreach logging / tracking
+      </div>
+      <div style="margin-top:6px; font-size:11px;">
+        <span style="color:#94a3b8;">? Check existing Google Workspace agreement</span><br/>
+        <span style="color:#94a3b8;">? May be covered under GSuite BAA if enterprise</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ─── LEGEND ────────────────────────────────────────────────── -->
+  <div class="legend">
+    <div class="section-label" style="width:100%; border:none; margin:0; padding:0;">Legend</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2d5a2d;"></div>Ingest / Data Entry</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2d2d5a;"></div>Turso Database Storage</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#5a2d2d;"></div>Anthropic API Processing</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2d5a5a;"></div>External Services</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#5a5a2d;"></div>Output / Send</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#5a2d5a;"></div>Auth &amp; Access Control</div>
+    <div class="legend-item"><div class="tag tag-pii" style="margin:0;">PII</div>Contains personal data</div>
+    <div class="legend-item"><div class="tag tag-secret" style="margin:0;">secret</div>Auth credential</div>
+    <div class="legend-item"><div class="tag tag-cached" style="margin:0;">cached</div>Cached / derived data</div>
+    <div class="legend-item"><div class="tag tag-rt" style="margin:0;">real-time</div>Real-time trigger</div>
+  </div>
+
+</div>
+</body>
+</html>

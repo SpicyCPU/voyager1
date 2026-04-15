@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Account {
+  id           String   @id @default(cuid())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company      String   @unique
+
+  // Company-wide research — stored once, reused for all leads at this company
+  webResearch  String?  // public web + news research
+  edgarData    String?  // SEC EDGAR filings
+  driveData    String?  // Google Drive docs (browser-initiated OAuth)
+  jobSignals   String?  // open job postings with GraphQL keywords
+  accountNotes String?  // team-curated observations (e.g. "prefers REST framing")
+
+  leads        Lead[]
+}
+
+model Lead {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id])
+
+  name         String
+  title        String?
+  email        String?
+  linkedinUrl  String?
+  visitedUrls  String?  // newline-separated URL list
+  extraContext String?
+  signalType    String   @default("manual_entry")
+  // Values: manual_entry, web_visit, webinar, job_posting, github_download, other
+  signalHistory String?  // JSON: [{type, url, source, timestamp}] — accumulated signal log
+  lastSignalAt  String?  // ISO timestamp of most recent signal — drives recency boost in queue
+
+  // AI-generated fields
+  researchSummary String?  // 3-5 bullet intel briefing (pre-step before email draft)
+  emailSubject    String?
+  emailDraft      String?
+  linkedinNote    String?
+
+  // Status
+  draftStatus    String @default("idle")
+  // idle | running | done | error
+  outreachStatus String @default("draft")
+  // draft | sent | replied | no_response
+
+  sentAt DateTime?
+  notes  String?
+}

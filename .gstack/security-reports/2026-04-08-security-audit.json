@@ -1,0 +1,105 @@
+{
+  "version": "2.0.0",
+  "date": "2026-04-08T00:00:00Z",
+  "mode": "daily",
+  "scope": "full",
+  "diff_mode": false,
+  "phases_run": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+  "attack_surface": {
+    "code": {
+      "public_endpoints": 8,
+      "authenticated": 2,
+      "admin": 0,
+      "api": 10,
+      "uploads": 0,
+      "integrations": 2,
+      "background_jobs": 0,
+      "websockets": 0
+    },
+    "infrastructure": {
+      "ci_workflows": 1,
+      "webhook_receivers": 2,
+      "container_configs": 0,
+      "iac_configs": 0,
+      "deploy_targets": 0,
+      "secret_management": "env vars (.env.local, properly gitignored)"
+    }
+  },
+  "findings": [
+    {
+      "id": 1,
+      "severity": "CRITICAL",
+      "confidence": 10,
+      "status": "VERIFIED",
+      "phase": 9,
+      "phase_name": "OWASP A01: Broken Access Control",
+      "category": "Authentication",
+      "title": "8 of 10 API routes have zero authentication",
+      "file": "app/api/",
+      "description": "Queue, accounts, leads CRUD, generate, refine, send, and delete routes all require no auth. Only ingest routes are protected.",
+      "exploit_scenario": "Attacker discovers deployed URL, GETs /api/queue to read all prospect data + drafted emails, POSTs /api/leads/{id}/generate repeatedly to burn Anthropic API credits, POSTs /api/leads/{id}/send to mark leads as sent corrupting rep workflow.",
+      "impact": "Full data exposure of prospect PII and sales intel; unlimited Anthropic API cost amplification; CRM state corruption.",
+      "recommendation": "Add Next.js middleware.js at project root that checks a SITE_SECRET header/cookie on all /api/* routes except /api/ingest/*."
+    },
+    {
+      "id": 2,
+      "severity": "HIGH",
+      "confidence": 9,
+      "status": "VERIFIED",
+      "phase": 7,
+      "phase_name": "LLM Security",
+      "category": "LLM Security",
+      "title": "No rate limiting on AI generation endpoints — unbounded Anthropic API spend",
+      "file": "app/api/leads/[id]/generate/route.js, app/api/leads/[id]/refine/route.js",
+      "description": "POST /api/leads/{id}/generate makes 2 Anthropic API calls per request; POST /api/leads/{id}/refine makes 1. No rate limiting at code or platform level.",
+      "exploit_scenario": "Once auth is added, an insider or credential-holder scripts 1000 generate requests overnight → ~$30 in API costs. Without auth (finding #1), anyone can do this.",
+      "impact": "Uncontrolled Anthropic API spend. At 2 calls/generate, 500 requests = $15 in claude-sonnet-4 costs.",
+      "recommendation": "Add Vercel Edge rate limiting (vercel.json) or Upstash Ratelimit middleware: 10 generate calls per user per hour."
+    },
+    {
+      "id": 3,
+      "severity": "HIGH",
+      "confidence": 9,
+      "status": "VERIFIED",
+      "phase": 4,
+      "phase_name": "CI/CD Pipeline Security",
+      "category": "CI/CD",
+      "title": "Third-party CI action oven-sh/setup-bun@v2 not SHA-pinned",
+      "file": ".github/workflows/test.yml:10",
+      "description": "Uses tag reference @v2, not a full commit SHA. Tag can be moved by the owner or a compromised account.",
+      "exploit_scenario": "oven-sh account or repo compromised; attacker pushes malicious setup-bun@v2 that exfiltrates repo secrets or injects backdoor into bun install artifacts. CI runs on every push/PR.",
+      "impact": "Full compromise of CI environment, potential secret exfiltration from GitHub Actions secrets.",
+      "recommendation": "Pin to SHA: uses: oven-sh/setup-bun@4bc47a7 (or current SHA from actions/runner-images). Run `gh api repos/oven-sh/setup-bun/commits/v2 | jq '.sha'` to get it."
+    },
+    {
+      "id": 4,
+      "severity": "MEDIUM",
+      "confidence": 9,
+      "status": "VERIFIED",
+      "phase": 1,
+      "phase_name": "Attack Surface Census",
+      "category": "Configuration",
+      "title": "NEXT_PUBLIC_WEBHOOK_URL exposes Google Apps Script endpoint in JS bundle",
+      "file": "app/components/LeadDetail.js:9",
+      "description": "NEXT_PUBLIC_ prefix embeds the value in the client-side bundle. Anyone loading the page can find the Apps Script URL in page source. Currently broken (env var named WEBHOOK_URL, not NEXT_PUBLIC_WEBHOOK_URL) so not yet active.",
+      "exploit_scenario": "When the env var is correctly set for deployment, any user of the app can find the Apps Script URL and POST fake sent-email records to the Google Sheet, corrupting outreach tracking.",
+      "impact": "Google Sheet CRM data corrupted with fake sent-email records. Potential data exfiltration if the Apps Script has broader Sheets access.",
+      "recommendation": "Move webhook call to a server-side API route (POST /api/leads/{id}/send already exists — add the Sheet logging there). Use WEBHOOK_URL without NEXT_PUBLIC prefix so it stays server-side only."
+    }
+  ],
+  "filter_stats": {
+    "candidates_scanned": 12,
+    "hard_exclusion_filtered": 3,
+    "confidence_gate_filtered": 2,
+    "verification_filtered": 0,
+    "reported": 4
+  },
+  "totals": { "critical": 1, "high": 2, "medium": 1, "tentative": 0 },
+  "trend": {
+    "prior_report_date": null,
+    "resolved": 0,
+    "persistent": 0,
+    "new": 4,
+    "direction": "first_run"
+  }
+}
