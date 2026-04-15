@@ -44,7 +44,7 @@ function extractTier(extraContext) {
   return match ? match[1].trim() : null;
 }
 
-function TriageCard({ lead, onGenerate, generating }) {
+function TriageCard({ lead, onGenerate, onDiscard, generating }) {
   const isRunning = lead.draftStatus === "running";
   const isDone = lead.draftStatus === "done";
   const isError = lead.draftStatus === "error";
@@ -75,7 +75,7 @@ function TriageCard({ lead, onGenerate, generating }) {
           {tier} plan
         </span>
       )}
-      <div style={{ flexShrink: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
         {isDone && (
           <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 600 }}>Ready ✓</span>
         )}
@@ -91,6 +91,23 @@ function TriageCard({ lead, onGenerate, generating }) {
           <Btn variant="secondary" small onClick={() => onGenerate(lead.id)} disabled={generating}>
             Generate
           </Btn>
+        )}
+        {!isRunning && (
+          <button
+            onClick={() => onDiscard(lead.id)}
+            title="Discard lead"
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              color: A.textMuted, fontSize: 16, lineHeight: 1,
+              padding: "2px 4px", borderRadius: 4,
+              display: "flex", alignItems: "center",
+              transition: "color 0.1s",
+            }}
+            onMouseEnter={e => e.currentTarget.style.color = "#dc2626"}
+            onMouseLeave={e => e.currentTarget.style.color = A.textMuted}
+          >
+            ×
+          </button>
         )}
       </div>
     </div>
@@ -138,6 +155,11 @@ export default function TriageBoard() {
     } finally {
       setGenerating(false);
     }
+  }
+
+  async function discardLead(id) {
+    setLeads(ls => ls.filter(l => l.id !== id));
+    await fetch(`/api/leads/${id}`, { method: "DELETE" });
   }
 
   async function generateAll() {
@@ -248,7 +270,7 @@ export default function TriageBoard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {doneLeads.map(lead => (
-              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} generating={generating} />
+              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generating} />
             ))}
           </div>
         </div>
@@ -265,7 +287,7 @@ export default function TriageBoard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {runningLeads.map(lead => (
-              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} generating={generating} />
+              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generating} />
             ))}
           </div>
         </div>
@@ -282,7 +304,7 @@ export default function TriageBoard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {errorLeads.map(lead => (
-              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} generating={generating} />
+              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generating} />
             ))}
           </div>
         </div>
@@ -299,7 +321,7 @@ export default function TriageBoard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {idleLeads.map(lead => (
-              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} generating={generating} />
+              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generating} />
             ))}
           </div>
         </div>
