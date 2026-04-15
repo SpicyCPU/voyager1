@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 const SESSION_COOKIE = "v1_session";
 
-export function middleware(request) {
+export function proxy(request) {
   const { pathname } = request.nextUrl;
 
   // Always allow: login page, auth API routes, ingest webhooks (have their own auth)

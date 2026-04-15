@@ -3,7 +3,7 @@
 //         login route bypass, cookie validation, missing SITE_SECRET handling
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { middleware } from "../middleware.js";
+import { proxy as middleware } from "../proxy.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
