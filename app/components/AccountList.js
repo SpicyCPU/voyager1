@@ -161,28 +161,39 @@ export default function AccountList() {
   const [tracked, setTracked] = useState([]);
   const [untracked, setUntracked] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [showUntracked, setShowUntracked] = useState(false);
   const [loadingUntracked, setLoadingUntracked] = useState(false);
 
   async function loadTracked() {
-    const res = await fetch("/api/accounts?tracked=true");
-    const d = await res.json();
-    setTracked(d.accounts ?? []);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/accounts?tracked=true");
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      const d = await res.json();
+      setTracked(d.accounts ?? []);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function loadUntracked() {
     setLoadingUntracked(true);
-    const res = await fetch("/api/accounts?tracked=false");
-    const d = await res.json();
-    // Sort: AI-recommended first, then by lead count desc
-    const sorted = (d.accounts ?? []).sort((a, b) => {
-      if (a._recommended && !b._recommended) return -1;
-      if (!a._recommended && b._recommended) return 1;
-      return (b._count?.leads ?? 0) - (a._count?.leads ?? 0);
-    });
-    setUntracked(sorted);
-    setLoadingUntracked(false);
+    try {
+      const res = await fetch("/api/accounts?tracked=false");
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      const d = await res.json();
+      // Sort: AI-recommended first, then by lead count desc
+      const sorted = (d.accounts ?? []).sort((a, b) => {
+        if (a._recommended && !b._recommended) return -1;
+        if (!a._recommended && b._recommended) return 1;
+        return (b._count?.leads ?? 0) - (a._count?.leads ?? 0);
+      });
+      setUntracked(sorted);
+    } catch {} finally {
+      setLoadingUntracked(false);
+    }
   }
 
   useEffect(() => { loadTracked(); }, []);
@@ -216,6 +227,19 @@ export default function AccountList() {
 
   if (loading) {
     return <div style={{ padding: 40, color: A.textMuted, textAlign: "center" }}>Loading…</div>;
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: 40, textAlign: "center" }}>
+        <div style={{ color: "#dc2626", fontSize: 13, marginBottom: 8 }}>Failed to load accounts</div>
+        <div style={{ color: A.textMuted, fontSize: 12, marginBottom: 16 }}>{error}</div>
+        <button onClick={() => { setError(null); setLoading(true); loadTracked(); }}
+          style={{ fontSize: 12, color: A.horizon, background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}>
+          Retry
+        </button>
+      </div>
+    );
   }
 
   const recommendedCount = untracked.filter(a => a._recommended).length;
