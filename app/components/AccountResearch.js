@@ -34,13 +34,6 @@ export default function AccountResearch({ account, leads, onAccountUpdated, onTo
   const [nameError, setNameError] = useState(null);
   const [savingName, setSavingName] = useState(false);
 
-  const [identity, setIdentity] = useState({
-    sourcedVia: account.sourcedVia ?? "",
-    vendorDomains: account.vendorDomains ?? "",
-  });
-  const [savingIdentity, setSavingIdentity] = useState(false);
-  const [savedIdentity, setSavedIdentity] = useState(false);
-
   // Research fields
   const [fields, setFields] = useState({
     webResearch: account.webResearch ?? "",
@@ -54,7 +47,6 @@ export default function AccountResearch({ account, leads, onAccountUpdated, onTo
   const [refreshing, setRefreshing] = useState(false);
 
   function setField(key) { return e => setFields(f => ({ ...f, [key]: e.target.value })); }
-  function setId(key) { return e => setIdentity(f => ({ ...f, [key]: e.target.value })); }
 
   async function saveName() {
     const trimmed = companyDraft.trim();
@@ -72,17 +64,6 @@ export default function AccountResearch({ account, leads, onAccountUpdated, onTo
     } finally {
       setSavingName(false);
     }
-  }
-
-  async function saveIdentity() {
-    setSavingIdentity(true); setSavedIdentity(false);
-    await fetch(`/api/accounts/${account.id}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(identity),
-    });
-    setSavingIdentity(false); setSavedIdentity(true);
-    setTimeout(() => setSavedIdentity(false), 2000);
-    onAccountUpdated?.({ ...account, ...identity });
   }
 
   async function save() {
@@ -201,49 +182,6 @@ export default function AccountResearch({ account, leads, onAccountUpdated, onTo
         borderTop: "none", borderRadius: "0 0 8px 8px",
         display: "flex", flexDirection: "column", gap: 14,
       }}>
-
-        {/* Account identity section */}
-        <div style={{
-          padding: "12px 14px", background: A.offWhite,
-          border: `1px solid ${A.satellite}`, borderRadius: 8,
-          display: "flex", flexDirection: "column", gap: 10,
-        }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: A.textMuted, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-            Account Identity
-          </div>
-
-          <div>
-            <label style={lbl}>Sourced via</label>
-            <input
-              style={inp}
-              value={identity.sourcedVia}
-              onChange={setId("sourcedVia")}
-              placeholder="e.g. StraightSys (outsourced provider)"
-            />
-            <div style={{ fontSize: 11, color: A.textMuted, marginTop: 3 }}>
-              If leads came through a vendor or SI, name them here. Claude will research the account above, not the intermediary.
-            </div>
-          </div>
-
-          <div>
-            <label style={lbl}>Vendor domains</label>
-            <input
-              style={inp}
-              value={identity.vendorDomains}
-              onChange={setId("vendorDomains")}
-              placeholder="e.g. straightsys.com, sysgroup.com"
-            />
-            <div style={{ fontSize: 11, color: A.textMuted, marginTop: 3 }}>
-              Email domains from the vendor. Future ingest from these domains will route here automatically.
-            </div>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Btn variant="secondary" small onClick={saveIdentity} disabled={savingIdentity}>
-              {savedIdentity ? "Saved ✓" : savingIdentity ? "Saving…" : "Save identity"}
-            </Btn>
-          </div>
-        </div>
 
         {/* Research fields */}
         {[
