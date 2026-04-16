@@ -133,6 +133,7 @@ export default function TriageBoard() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [generatingAll, setGeneratingAll] = useState(false);
+  const [query, setQuery] = useState("");
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -193,10 +194,20 @@ export default function TriageBoard() {
     router.push(`/review/${ids[0]}`);
   }
 
-  const idleLeads = leads.filter(l => l.draftStatus === "idle");
-  const runningLeads = leads.filter(l => l.draftStatus === "running");
-  const doneLeads = leads.filter(l => l.draftStatus === "done");
-  const errorLeads = leads.filter(l => l.draftStatus === "error");
+  const q = query.trim().toLowerCase();
+  const visible = q
+    ? leads.filter(l =>
+        l.name?.toLowerCase().includes(q) ||
+        l.account?.company?.toLowerCase().includes(q) ||
+        l.title?.toLowerCase().includes(q) ||
+        l.email?.toLowerCase().includes(q)
+      )
+    : leads;
+
+  const idleLeads = visible.filter(l => l.draftStatus === "idle");
+  const runningLeads = visible.filter(l => l.draftStatus === "running");
+  const doneLeads = visible.filter(l => l.draftStatus === "done");
+  const errorLeads = visible.filter(l => l.draftStatus === "error");
 
   const needsAction = idleLeads.length + errorLeads.length;
   const readyCount = doneLeads.length;
@@ -256,6 +267,20 @@ export default function TriageBoard() {
           )}
         </div>
         <div style={{ flex: 1 }} />
+        <input
+          type="search"
+          placeholder="Search leads…"
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          style={{
+            fontSize: 12, padding: "5px 10px", borderRadius: 6,
+            border: `1px solid ${A.satellite}`, outline: "none",
+            width: 180, color: A.text, background: A.offWhite,
+            fontFamily: "inherit",
+          }}
+          onFocus={e => e.target.style.borderColor = A.horizon}
+          onBlur={e => e.target.style.borderColor = A.satellite}
+        />
         <div style={{ display: "flex", gap: 8 }}>
           {needsAction > 0 && (
             <Btn variant="secondary" onClick={generateAll} disabled={generatingAll || generating}>
