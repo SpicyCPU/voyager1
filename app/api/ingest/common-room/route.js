@@ -86,8 +86,21 @@ export async function POST(request) {
         createdAt: now,
         updatedAt: now,
         company: mapped.company.trim(),
+        headcount: mapped.headcount ?? null,
+        hq: mapped.hq ?? null,
       })
       .returning();
+  } else if (mapped.headcount || mapped.hq) {
+    // Backfill missing enrichment on existing accounts
+    const updates = { updatedAt: now };
+    if (mapped.headcount && !account.headcount) updates.headcount = mapped.headcount;
+    if (mapped.hq && !account.hq) updates.hq = mapped.hq;
+    if (Object.keys(updates).length > 1) {
+      [account] = await db.update(accounts)
+        .set(updates)
+        .where(eq(accounts.id, account.id))
+        .returning();
+    }
   }
 
   // 5. Build new signal entry for history
@@ -166,29 +179,35 @@ export async function POST(request) {
 function mapPayload(payload, source) {
   // Activity payload: has activityType + serviceName + member + company fields
   if (payload.activityType || payload.serviceName) {
+    const org = payload.member?.organization ?? {};
     return {
       name: payload.member?.fullName ?? null,
       email: payload.member?.primaryEmail ?? payload.member?.professionalEmail ?? null,
       title: payload.member?.title ?? null,
       linkedinUrl: payload.member?.linkedInUrl ?? null,
-      company: payload.company?.name ?? payload.member?.organization?.name ?? null,
+      company: payload.company?.name ?? org.name ?? null,
       visitedUrl: payload.externalActivityUrl ?? payload.member?.lastSeenWebVisitUrl ?? null,
       signalType: mapSignalType(payload.serviceName, source?.name),
       extraContext: payload.content ?? null,
+      headcount: payload.company?.employeeCount ?? org.employeeCount ?? null,
+      hq: payload.company?.location ?? payload.company?.country ?? org.location ?? org.country ?? null,
     };
   }
 
   // Contact payload: has fullName, primaryEmail, organization fields
   if (payload.fullName || payload.primaryEmail) {
+    const org = payload.organization ?? {};
     return {
       name: payload.fullName ?? null,
       email: payload.primaryEmail ?? payload.professionalEmail ?? null,
       title: payload.title ?? null,
       linkedinUrl: payload.linkedInUrl ?? null,
-      company: payload.organization?.name ?? null,
+      company: org.name ?? null,
       visitedUrl: payload.lastSeenWebVisitUrl ?? null,
       signalType: payload.lastSeenWebVisitUrl ? "web_visit" : "other",
       extraContext: null,
+      headcount: org.employeeCount ?? null,
+      hq: org.location ?? org.country ?? null,
     };
   }
 
@@ -203,6 +222,8 @@ function mapPayload(payload, source) {
       visitedUrl: payload.lastSeenWebVisitUrl ?? null,
       signalType: "web_visit",
       extraContext: null,
+      headcount: payload.employeeCount ?? null,
+      hq: payload.location ?? payload.country ?? null,
     };
   }
 

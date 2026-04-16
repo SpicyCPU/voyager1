@@ -44,12 +44,20 @@ function extractTier(extraContext) {
   return match ? match[1].trim() : null;
 }
 
+function accountMeta(account) {
+  const parts = [];
+  if (account?.headcount) parts.push(account.headcount);
+  if (account?.hq) parts.push(account.hq);
+  return parts.join(" · ");
+}
+
 function TriageCard({ lead, onGenerate, onDiscard, generating }) {
   const isRunning = lead.draftStatus === "running";
   const isDone = lead.draftStatus === "done";
   const isError = lead.draftStatus === "error";
   const isIdle = lead.draftStatus === "idle";
   const tier = extractTier(lead.extraContext);
+  const meta = accountMeta(lead.account);
 
   return (
     <div style={{
@@ -68,6 +76,11 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
           {lead.title && lead.account?.company ? " · " : ""}
           {lead.account?.company ?? ""}
         </div>
+        {meta && (
+          <div style={{ fontSize: 11, color: A.textMuted, marginTop: 1, opacity: 0.75 }}>
+            {meta}
+          </div>
+        )}
       </div>
       {lead.signalType && <SignalBadge type={lead.signalType} />}
       {tier && (
