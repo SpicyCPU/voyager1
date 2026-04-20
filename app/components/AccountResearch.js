@@ -161,6 +161,39 @@ export default function AccountResearch({ account, leads, onAccountUpdated, onTo
           <div style={{ fontSize: 11, color: "#fca5a5", marginBottom: 8 }}>{nameError}</div>
         )}
 
+        {/* Account meta chips */}
+        {(account.headcount || account.hq || account.industry) && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+            {account.headcount && account.headcount !== "unknown" && (
+              <span style={{
+                fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.85)",
+                background: "rgba(255,255,255,0.12)", padding: "2px 8px",
+                borderRadius: 20, whiteSpace: "nowrap",
+              }}>
+                {account.headcount} employees
+              </span>
+            )}
+            {account.hq && account.hq !== "Unknown" && (
+              <span style={{
+                fontSize: 11, color: "rgba(255,255,255,0.7)",
+                background: "rgba(255,255,255,0.08)", padding: "2px 8px",
+                borderRadius: 20, whiteSpace: "nowrap",
+              }}>
+                {account.hq}
+              </span>
+            )}
+            {account.industry && account.industry !== "unknown" && (
+              <span style={{
+                fontSize: 11, color: "rgba(255,255,255,0.7)",
+                background: "rgba(255,255,255,0.08)", padding: "2px 8px",
+                borderRadius: 20, whiteSpace: "nowrap",
+              }}>
+                {account.industry}
+              </span>
+            )}
+          </div>
+        )}
+
         <div style={{ display: "flex", gap: 16 }}>
           {[
             { label: "Leads", val: leads.length },

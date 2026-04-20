@@ -48,6 +48,7 @@ export async function POST(request, { params }) {
         webResearch, jobSignals, webResearchAt: now, updatedAt: now,
         ...(metadata?.industry && { industry: metadata.industry }),
         ...(metadata?.headcount && { headcount: metadata.headcount }),
+        ...(metadata?.hq && { hq: metadata.hq }),
         ...(metadata?.companyType && { companyType: metadata.companyType }),
       })
       .where(eq(accounts.id, id))
@@ -72,7 +73,7 @@ function buildAccountResearchPrompt(account) {
     ``,
     `After your intelligence bullets, append exactly this block (fill in values, do not skip):`,
     `---METADATA---`,
-    `{"industry":"<fintech|healthcare|defense|logistics|retail|media|saas|consulting|government|manufacturing|other>","headcount":"<1-10|11-50|51-200|201-1000|1000+|unknown>","companyType":"<startup|scaleup|enterprise|consultancy|government|nonprofit|unknown>"}`,
+    `{"industry":"<fintech|healthcare|defense|logistics|retail|media|saas|consulting|government|manufacturing|other>","headcount":"<1-10|11-50|51-200|201-1000|1000+|unknown>","hq":"<City, Country or Country>","companyType":"<startup|scaleup|enterprise|consultancy|government|nonprofit|unknown>"}`,
   ].filter(Boolean).join("\n");
 
   return [{ role: "user", content }];

@@ -123,6 +123,16 @@ export default function LeadDetail({ lead: initialLead, onUpdated, onEdit, onDel
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>{lead.name}</div>
           {lead.title && <div style={{ color: A.textMuted, fontSize: 12 }}>{lead.title}</div>}
+          {lead.email && (
+            <a
+              href={`mailto:${lead.email}`}
+              style={{ fontSize: 12, color: A.horizon, textDecoration: "none" }}
+              onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
+              onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
+            >
+              {lead.email}
+            </a>
+          )}
         </div>
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <DraftPill status={lead.draftStatus} />
