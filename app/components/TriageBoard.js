@@ -81,9 +81,13 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
           {lead.title && lead.account?.company ? " · " : ""}
           {lead.account?.company ?? ""}
         </div>
-        {meta && (
+        {(meta || lead.email) && (
           <div style={{ fontSize: 11, color: A.textMuted, marginTop: 1, opacity: 0.75 }}>
             {meta}
+            {meta && lead.email ? " · " : ""}
+            {lead.email && (
+              <span style={{ fontFamily: "monospace", letterSpacing: "-0.01em" }}>{lead.email}</span>
+            )}
           </div>
         )}
       </div>
