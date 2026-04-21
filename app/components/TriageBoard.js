@@ -78,7 +78,7 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
           {lead.account?.company ?? ""}
         </div>
         {meta && (
-          <div style={{ fontSize: 11, color: A.textMuted, marginTop: 1, opacity: 0.75 }}>
+          <div style={{ fontSize: 11, color: A.textMuted, marginTop: 1, opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {meta}
           </div>
         )}
