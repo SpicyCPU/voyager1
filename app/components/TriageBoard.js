@@ -152,7 +152,7 @@ export default function TriageBoard() {
   const router = useRouter();
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
+  const [generatingIds, setGeneratingIds] = useState(new Set());
   const [generatingAll, setGeneratingAll] = useState(false);
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState("date_desc");
@@ -178,7 +178,7 @@ export default function TriageBoard() {
   }, [leads, fetchQueue]);
 
   async function generateOne(id) {
-    setGenerating(true);
+    setGeneratingIds(s => new Set([...s, id]));
     setLeads(ls => ls.map(l => l.id === id ? { ...l, draftStatus: "running" } : l));
     try {
       const res = await fetch(`/api/leads/${id}/generate`, { method: "POST" });
@@ -189,7 +189,7 @@ export default function TriageBoard() {
     } catch {
       setLeads(ls => ls.map(l => l.id === id ? { ...l, draftStatus: "error" } : l));
     } finally {
-      setGenerating(false);
+      setGeneratingIds(s => { const n = new Set(s); n.delete(id); return n; });
     }
   }
 
@@ -321,7 +321,7 @@ export default function TriageBoard() {
         />
         <div style={{ display: "flex", gap: 8 }}>
           {needsAction > 0 && (
-            <Btn variant="secondary" onClick={generateAll} disabled={generatingAll || generating}>
+            <Btn variant="secondary" onClick={generateAll} disabled={generatingAll}>
               {generatingAll ? "Generating…" : `Generate all (${needsAction})`}
             </Btn>
           )}
@@ -346,7 +346,7 @@ export default function TriageBoard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {doneLeads.map(lead => (
-              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generating} />
+              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generatingIds.has(lead.id)} />
             ))}
           </div>
         </div>
@@ -363,7 +363,7 @@ export default function TriageBoard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {runningLeads.map(lead => (
-              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generating} />
+              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generatingIds.has(lead.id)} />
             ))}
           </div>
         </div>
@@ -380,7 +380,7 @@ export default function TriageBoard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {errorLeads.map(lead => (
-              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generating} />
+              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generatingIds.has(lead.id)} />
             ))}
           </div>
         </div>
@@ -397,7 +397,7 @@ export default function TriageBoard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {idleLeads.map(lead => (
-              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generating} />
+              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generatingIds.has(lead.id)} />
             ))}
           </div>
         </div>
