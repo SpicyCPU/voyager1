@@ -251,76 +251,7 @@ export default function TriageBoard() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "row", gap: 16, alignItems: "flex-start" }}>
-
-      {/* Left sidebar — sort controls */}
-      <div style={{
-        width: 152, flexShrink: 0,
-        background: "#fff", border: `1px solid #CFD7D6`,
-        borderRadius: 8, padding: "12px 0", position: "sticky", top: 0,
-      }}>
-        <div style={{
-          fontSize: 10, fontWeight: 700, color: "#467B95",
-          textTransform: "uppercase", letterSpacing: "0.06em",
-          padding: "0 14px 8px",
-        }}>
-          Sort by
-        </div>
-        {SORT_OPTIONS.map(opt => (
-          <button
-            key={opt.key}
-            onClick={() => setSortKey(opt.key)}
-            style={{
-              display: "block", width: "100%", textAlign: "left",
-              padding: "7px 14px", border: "none", background: "none",
-              fontSize: 12, fontFamily: "inherit", cursor: "pointer",
-              color: sortKey === opt.key ? "#FC5200" : "#15252D",
-              fontWeight: sortKey === opt.key ? 700 : 400,
-              borderLeft: `3px solid ${sortKey === opt.key ? "#FC5200" : "transparent"}`,
-              transition: "all 0.1s",
-            }}
-            onMouseEnter={e => { if (sortKey !== opt.key) e.currentTarget.style.background = "#ECEFEE"; }}
-            onMouseLeave={e => { if (sortKey !== opt.key) e.currentTarget.style.background = "none"; }}
-          >
-            {opt.label}
-          </button>
-        ))}
-
-        {/* Status summary */}
-        <div style={{
-          margin: "12px 14px 0", paddingTop: 12,
-          borderTop: `1px solid #ECEFEE`,
-          fontSize: 11, color: "#467B95", display: "flex", flexDirection: "column", gap: 4,
-        }}>
-          {doneLeads.length > 0 && (
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "#16a34a" }}>Ready</span>
-              <span style={{ fontWeight: 700, color: "#16a34a" }}>{doneLeads.length}</span>
-            </div>
-          )}
-          {runningLeads.length > 0 && (
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Generating</span>
-              <span style={{ fontWeight: 700 }}>{runningLeads.length}</span>
-            </div>
-          )}
-          {errorLeads.length > 0 && (
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span style={{ color: "#dc2626" }}>Failed</span>
-              <span style={{ fontWeight: 700, color: "#dc2626" }}>{errorLeads.length}</span>
-            </div>
-          )}
-          {idleLeads.length > 0 && (
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>Pending</span>
-              <span style={{ fontWeight: 700 }}>{idleLeads.length}</span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Main content */}
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
       {/* Summary + actions */}
       <div style={{
@@ -357,6 +288,19 @@ export default function TriageBoard() {
           )}
         </div>
         <div style={{ flex: 1 }} />
+        <select
+          value={sortKey}
+          onChange={e => setSortKey(e.target.value)}
+          style={{
+            fontSize: 12, padding: "5px 8px", borderRadius: 6,
+            border: `1px solid ${A.satellite}`, outline: "none",
+            color: A.text, background: A.offWhite, fontFamily: "inherit", cursor: "pointer",
+          }}
+        >
+          {SORT_OPTIONS.map(opt => (
+            <option key={opt.key} value={opt.key}>{opt.label}</option>
+          ))}
+        </select>
         <input
           type="search"
           placeholder="Search leads…"
@@ -455,7 +399,6 @@ export default function TriageBoard() {
         </div>
       )}
 
-      </div>{/* end main content */}
     </div>
   );
 }
