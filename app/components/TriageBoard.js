@@ -46,8 +46,12 @@ function extractTier(extraContext) {
 
 function accountMeta(account) {
   const parts = [];
-  if (account?.headcount) parts.push(account.headcount + " employees");
-  if (account?.hq) parts.push(account.hq);
+  if (account?.headcount) parts.push(account.headcount + " emp.");
+  if (account?.hq) {
+    // "Salt Lake City, United States" → "Salt Lake City"
+    const hq = account.hq.includes(",") ? account.hq.split(",")[0].trim() : account.hq;
+    parts.push(hq);
+  }
   if (account?.industry) parts.push(account.industry);
   return parts.join(" · ");
 }
@@ -78,7 +82,7 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
           {lead.account?.company ?? ""}
         </div>
         {meta && (
-          <div style={{ fontSize: 11, color: A.textMuted, marginTop: 1, opacity: 0.75, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <div style={{ fontSize: 11, color: A.textMuted, marginTop: 1, opacity: 0.75 }}>
             {meta}
           </div>
         )}
