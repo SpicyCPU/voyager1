@@ -89,10 +89,10 @@ export async function POST(request) {
       const extraContext = parts.join(" · ");
 
       let lastSignalAt = now;
-      if (row["Last Seen At"]) {
-        try { lastSignalAt = new Date(row["Last Seen At"]).toISOString(); } catch { /* ignore */ }
-      } else if (row["Created At Date"]) {
+      if (row["Created At Date"]) {
         try { lastSignalAt = new Date(row["Created At Date"]).toISOString(); } catch { /* ignore */ }
+      } else if (row["Last Seen At"]) {
+        try { lastSignalAt = new Date(row["Last Seen At"]).toISOString(); } catch { /* ignore */ }
       }
 
       // Upsert account
