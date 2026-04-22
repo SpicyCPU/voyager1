@@ -20,21 +20,11 @@ export default function SentView({ onSelectLead }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/accounts")
+    fetch("/api/sent")
       .then(r => r.json())
-      .then(async data => {
-        const all = [];
-        for (const acc of data.accounts ?? []) {
-          const res = await fetch(`/api/accounts/${acc.id}`);
-          const d = await res.json();
-          (d.leads ?? []).filter(l => l.outreachStatus === "sent").forEach(l => {
-            all.push({ ...l, account: acc });
-          });
-        }
-        all.sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt));
-        setLeads(all);
-        setLoading(false);
-      });
+      .then(data => setLeads(data.leads ?? []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) return <div style={{ padding: 40, color: A.textMuted, textAlign: "center" }}>Loading…</div>;
