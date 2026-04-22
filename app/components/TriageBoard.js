@@ -158,6 +158,8 @@ export default function TriageBoard() {
   const [loading, setLoading] = useState(true);
   const [generatingIds, setGeneratingIds] = useState(new Set());
   const [generatingAll, setGeneratingAll] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState("date_desc");
 
@@ -210,6 +212,23 @@ export default function TriageBoard() {
       await generateOne(lead.id);
     }
     setGeneratingAll(false);
+  }
+
+  async function syncFromOmni() {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/sync/omni", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Sync failed");
+      setSyncResult({ ok: true, created: data.created, updated: data.updated });
+      if (data.created > 0) await fetchQueue();
+    } catch (err) {
+      setSyncResult({ ok: false, error: err.message });
+    } finally {
+      setSyncing(false);
+      setTimeout(() => setSyncResult(null), 5000);
+    }
   }
 
   function startReview() {
@@ -323,7 +342,20 @@ export default function TriageBoard() {
           onFocus={e => e.target.style.borderColor = A.horizon}
           onBlur={e => e.target.style.borderColor = A.satellite}
         />
-        <div style={{ display: "flex", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {syncResult && (
+            <span style={{
+              fontSize: 12, fontWeight: 600,
+              color: syncResult.ok ? "#16a34a" : "#dc2626",
+            }}>
+              {syncResult.ok
+                ? `↓ ${syncResult.created} new, ${syncResult.updated} updated`
+                : `Sync error: ${syncResult.error}`}
+            </span>
+          )}
+          <Btn variant="secondary" onClick={syncFromOmni} disabled={syncing}>
+            {syncing ? "Syncing…" : "↓ Sync Omni"}
+          </Btn>
           {needsAction > 0 && (
             <Btn variant="secondary" onClick={generateAll} disabled={generatingAll}>
               {generatingAll ? "Generating…" : `Generate all (${needsAction})`}
