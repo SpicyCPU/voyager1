@@ -75,7 +75,7 @@ export default function AccountDetailPage() {
       <div style={{ display: "flex", height: "calc(100vh - 92px)" }}>
         {/* Left: Account Research (30%) */}
         <div style={{
-          width: "30%", minWidth: 260, maxWidth: 360,
+          width: "42%", minWidth: 320, maxWidth: 560,
           borderRight: `1px solid ${A.satellite}`,
           padding: 16, overflowY: "auto",
         }}>
@@ -90,7 +90,7 @@ export default function AccountDetailPage() {
         {/* Right: Lead list + Lead detail (70%) */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           {/* Lead list — top ~40% */}
-          <div style={{ borderBottom: `1px solid ${A.satellite}`, height: "40%", minHeight: 180, overflowY: "auto" }}>
+          <div style={{ borderBottom: `1px solid ${A.satellite}`, height: "35%", minHeight: 160, overflowY: "auto" }}>
             <LeadList
               leads={leads}
               selectedId={selectedLead?.id}
