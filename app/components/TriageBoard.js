@@ -44,6 +44,19 @@ function extractTier(extraContext) {
   return match ? match[1].trim() : null;
 }
 
+function formatEngagementDate(dateStr) {
+  if (!dateStr) return null;
+  const date = new Date(dateStr);
+  if (isNaN(date)) return null;
+  const now = new Date();
+  const days = Math.floor((now - date) / 86400000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function accountMeta(account) {
   const parts = [];
   if (account?.headcount) parts.push(account.headcount + " emp.");
@@ -63,6 +76,7 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
   const isIdle = lead.draftStatus === "idle";
   const tier = extractTier(lead.extraContext);
   const meta = accountMeta(lead.account);
+  const engagedOn = formatEngagementDate(lead.lastSignalAt ?? lead.createdAt);
 
   return (
     <div style={{
@@ -95,6 +109,11 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
       {tier && (
         <span style={{ fontSize: 11, color: A.textMuted, flexShrink: 0 }}>
           {tier} plan
+        </span>
+      )}
+      {engagedOn && (
+        <span style={{ fontSize: 11, color: A.textMuted, flexShrink: 0, opacity: 0.7 }}>
+          {engagedOn}
         </span>
       )}
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
