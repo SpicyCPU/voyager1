@@ -61,7 +61,7 @@ export async function POST(request, { params }) {
 
 async function runWebResearch(apiKey, account) {
   const prompt = [
-    `You are a B2B sales researcher at Apollo GraphQL. Search the web and write a concise 4-6 bullet intelligence briefing on "${account.company}" for a sales rep. Each bullet should be one sentence — specific, actionable, no fluff.`,
+    `You are a B2B sales researcher at Apollo GraphQL. Search the web and write a concise 4-6 bullet intelligence briefing on "${account.company}" for a sales rep. Each bullet should be one sentence — specific, actionable, no fluff. Return your findings directly — do not narrate your search process, do not include phrases like "I'll search for", "Let me search", or "Based on my research". Start immediately with the first bullet.`,
     ``,
     APOLLO_PRODUCT_CONTEXT,
     ``,
@@ -79,12 +79,12 @@ async function runWebResearch(apiKey, account) {
 }
 
 async function runJobSignals(apiKey, account) {
-  const prompt = `You are a B2B sales researcher at Apollo GraphQL. Search for recent job postings at "${account.company}" (last 6 months) and summarize 2-3 bullets on any signals that suggest they are building or scaling API/GraphQL/platform infrastructure. Look for roles like: Staff/Principal Engineer, API Platform, GraphQL, Backend Platform, Developer Experience, Data Engineering. If no relevant signals found, say so briefly.`;
+  const prompt = `You are a B2B sales researcher at Apollo GraphQL. Search for recent job postings at "${account.company}" (last 6 months) and summarize 2-3 bullets on signals that suggest they are building or scaling API/GraphQL/platform infrastructure. Look for roles like: Staff/Principal Engineer, API Platform, GraphQL, Backend Platform, Developer Experience, Data Engineering. If no relevant signals found, say so in one line. Return findings directly — no narration, no "I'll search for", no "Based on my research" preamble. Start with the first bullet.`;
   return callClaudeWithSearch(apiKey, [{ role: "user", content: prompt }]);
 }
 
 async function runEdgarResearch(apiKey, account) {
-  const prompt = `You are a B2B sales researcher at Apollo GraphQL. Search SEC EDGAR and financial news for "${account.company}". If they are a public company, summarize in 3-4 bullets: recent earnings highlights, revenue growth trend, any technology investment mentions, and strategic priorities from their latest 10-K or earnings call. If they are private, search for funding rounds, investor announcements, or any financial disclosures. If no financial data is findable, say so briefly.`;
+  const prompt = `You are a B2B sales researcher at Apollo GraphQL. Search SEC EDGAR and financial news for "${account.company}". If public, summarize in 3-4 bullets: recent earnings highlights, revenue growth trend, technology investment mentions, and strategic priorities from their latest 10-K or earnings call. If private, search for funding rounds, investor announcements, or financial disclosures. If nothing findable, say so in one line. Return findings directly — no narration, no "I'll search for", no "Based on my research" preamble. Start with the first bullet.`;
   return callClaudeWithSearch(apiKey, [{ role: "user", content: prompt }]);
 }
 

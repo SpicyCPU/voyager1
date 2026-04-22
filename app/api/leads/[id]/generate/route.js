@@ -113,7 +113,7 @@ export async function POST(request, { params }) {
 
 function buildResearchPrompt(lead, account) {
   const lines = [
-    `You are a B2B sales researcher at Apollo GraphQL. Synthesize the following signals about a prospect into a concise 3-5 bullet intelligence briefing. Each bullet should be one sentence — specific, actionable, no fluff. The goal of this research is to support a rep booking an intro call — focus on signals that indicate organizational readiness and buying potential, not just product fit.`,
+    `You are a B2B sales researcher at Apollo GraphQL. Synthesize the following signals about a prospect into a concise 3-5 bullet intelligence briefing. Each bullet should be one sentence — specific, actionable, no fluff. The goal is to support a rep booking an intro call — focus on signals that indicate organizational readiness and buying potential. Return findings directly — do not narrate your process, do not use phrases like "I'll search for", "Let me search", or "Based on my research". Start immediately with the first bullet.`,
     "",
     APOLLO_PRODUCT_CONTEXT,
     "",
