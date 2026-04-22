@@ -82,8 +82,8 @@ export default function AccountResearch({ account, leads, onAccountUpdated, onTo
       const res = await fetch(`/api/accounts/${account.id}/research`, { method: "POST" });
       const data = await res.json();
       if (data.account) {
-        const { webResearch, jobSignals, webResearchAt: rat } = data.account;
-        setFields(f => ({ ...f, webResearch: webResearch ?? "", jobSignals: jobSignals ?? "" }));
+        const { webResearch, jobSignals, edgarData, webResearchAt: rat } = data.account;
+        setFields(f => ({ ...f, webResearch: webResearch ?? "", jobSignals: jobSignals ?? "", edgarData: edgarData ?? "" }));
         setWebResearchAt(rat ?? null);
         onAccountUpdated?.({ ...account, ...data.account });
       }
