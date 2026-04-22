@@ -46,6 +46,12 @@ export default function AccountResearch({ account, leads, onAccountUpdated, onTo
   const [saved, setSaved] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Ask bar
+  const [askQuestion, setAskQuestion] = useState("");
+  const [askAnswer, setAskAnswer] = useState(null);
+  const [asking, setAsking] = useState(false);
+  const [askError, setAskError] = useState(null);
+
   function setField(key) { return e => setFields(f => ({ ...f, [key]: e.target.value })); }
 
   async function saveName() {
@@ -90,6 +96,35 @@ export default function AccountResearch({ account, leads, onAccountUpdated, onTo
     } finally {
       setRefreshing(false);
     }
+  }
+
+  async function askResearch() {
+    const q = askQuestion.trim();
+    if (!q) return;
+    setAsking(true); setAskAnswer(null); setAskError(null);
+    try {
+      const res = await fetch(`/api/accounts/${account.id}/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: q }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Research failed");
+      setAskAnswer(data.answer);
+    } catch (err) {
+      setAskError(err.message);
+    } finally {
+      setAsking(false);
+    }
+  }
+
+  function appendToNotes() {
+    if (!askAnswer) return;
+    const separator = fields.accountNotes ? "\n\n" : "";
+    const entry = `Q: ${askQuestion.trim()}\n${askAnswer}`;
+    setFields(f => ({ ...f, accountNotes: f.accountNotes + separator + entry }));
+    setAskAnswer(null);
+    setAskQuestion("");
   }
 
   return (
@@ -228,6 +263,49 @@ export default function AccountResearch({ account, leads, onAccountUpdated, onTo
             <textarea style={ta} value={fields[key]} onChange={setField(key)} placeholder={`Notes on ${label.toLowerCase()}…`} />
           </div>
         ))}
+
+        {/* Ask bar */}
+        <div style={{ borderTop: `1px solid ${A.satelliteLight}`, paddingTop: 14 }}>
+          <label style={lbl}>Ask about this account</label>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              type="text"
+              value={askQuestion}
+              onChange={e => { setAskQuestion(e.target.value); setAskAnswer(null); setAskError(null); }}
+              onKeyDown={e => e.key === "Enter" && !asking && askResearch()}
+              placeholder="e.g. What did they say about AI investment in their last earnings call?"
+              disabled={asking}
+              style={{
+                ...inp, flex: 1, fontSize: 12,
+                opacity: asking ? 0.6 : 1,
+              }}
+            />
+            <Btn variant="secondary" small onClick={askResearch} disabled={asking || !askQuestion.trim()}>
+              {asking ? "Asking…" : "Ask"}
+            </Btn>
+          </div>
+
+          {askError && (
+            <div style={{ fontSize: 12, color: "#dc2626", marginTop: 8 }}>{askError}</div>
+          )}
+
+          {askAnswer && (
+            <div style={{
+              marginTop: 8, padding: "10px 12px",
+              background: A.horizonFaint, borderRadius: 6,
+              border: `1px solid ${A.satellite}`,
+              fontSize: 12, color: A.text, lineHeight: 1.6,
+              whiteSpace: "pre-wrap",
+            }}>
+              {askAnswer}
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+                <Btn variant="secondary" small onClick={appendToNotes}>
+                  + Add to notes
+                </Btn>
+              </div>
+            </div>
+          )}
+        </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <div style={{ fontSize: 11, color: A.textMuted }}>
