@@ -113,7 +113,7 @@ export async function POST(request, { params }) {
 
 function buildResearchPrompt(lead, account) {
   const lines = [
-    `You are a B2B sales researcher at Apollo GraphQL. Synthesize the following signals about a prospect into a concise 3-5 bullet intelligence briefing. Each bullet should be one sentence — specific, actionable, no fluff.`,
+    `You are a B2B sales researcher at Apollo GraphQL. Synthesize the following signals about a prospect into a concise 3-5 bullet intelligence briefing. Each bullet should be one sentence — specific, actionable, no fluff. The goal of this research is to support a rep booking an intro call — focus on signals that indicate organizational readiness and buying potential, not just product fit.`,
     "",
     APOLLO_PRODUCT_CONTEXT,
     "",
@@ -129,9 +129,11 @@ function buildResearchPrompt(lead, account) {
     account.crEnrichment ? `COMMON ROOM SIGNALS: ${account.crEnrichment}` : "",
     account.sfContext ? `SALESFORCE CONTEXT: ${account.sfContext}` : "",
     "",
+    `If the Studio org name looks like an internal team name (e.g. "Platform Team", "API Core", "GraphQL Infra") rather than a real company, flag the likely parent company if identifiable from the email domain or other signals.`,
+    ``,
     `After your intelligence bullets, append exactly this block (fill in values, do not skip):`,
     `---METADATA---`,
-    `{"industry":"<fintech|healthcare|defense|logistics|retail|media|saas|consulting|government|manufacturing|other>","headcount":"<1-10|11-50|51-200|201-1000|1000+|unknown>","companyType":"<startup|scaleup|enterprise|consultancy|government|nonprofit|unknown>"}`,
+    `{"industry":"<fintech|healthcare|defense|logistics|retail|media|saas|consulting|government|manufacturing|other>","headcount":"<1-10|11-50|51-200|201-1000|1000+|unknown>","companyType":"<startup|scaleup|enterprise|consultancy|government|nonprofit|unknown>","salesQuality":"<high|medium|low>","hiddenOrg":"<parent company name or null>"}`,
   ].filter(Boolean).join("\n");
 
   return [{ role: "user", content: lines }];
@@ -178,11 +180,23 @@ function buildDraftPrompt(lead, account, researchSummary, rules = [], examples =
     ].join("\n"),
   ].filter(Boolean).join("\n\n");
 
+  // Tier-specific strategy injected into the prompt
+  const tier = lead.extraContext?.match(/Tier:\s*(\S+)/i)?.[1]?.toUpperCase() ?? null;
+  const tierGuidance = tier === "DEVELOPER"
+    ? `TIER CONTEXT: This org is on the Developer plan — they are actively using GraphOS and have real intent. Focus the outreach on what's limiting them at current scale and position Standard or Enterprise as the natural next step. Be direct about the upgrade path.`
+    : tier === "FREE" || tier === "FREE_PLAN"
+    ? `TIER CONTEXT: This org is on the Free plan — intent quality varies widely. If the intel briefing shows strong org size, request volume, or team signals, treat them like a serious prospect. If signals are weak, keep the email lighter and focus on curiosity rather than urgency.`
+    : null;
+
   const content = [
     `You are writing personalized outreach for an Apollo GraphQL sales rep. Return ONLY valid JSON matching this shape:`,
     `{"email_subject":"...","email_body":"...","linkedin_message":"..."}`,
     "",
+    `GOAL: Book a 20-minute intro call. Not to pitch every feature — just earn a conversation. One specific hook, one clear ask. Never reference more than one product feature.`,
+    "",
     APOLLO_PRODUCT_CONTEXT,
+    "",
+    tierGuidance ?? "",
     "",
     `INTEL BRIEFING:\n${researchSummary}`,
     "",
