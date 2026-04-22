@@ -65,7 +65,7 @@ async function runWebResearch(apiKey, account) {
     ``,
     APOLLO_PRODUCT_CONTEXT,
     ``,
-    `Focus on: what the company does, their tech stack (GraphQL/REST/microservices signals), recent funding or M&A, headcount and growth trends, and anything that maps to Apollo's buying patterns (multiple API teams, REST modernization, platform team hiring, regulated/air-gapped environments).`,
+    `Focus on signals that indicate a need for an API layer or data integration platform: GraphQL/REST/microservices adoption, platform team growth, AI or data product investment, digital transformation initiatives, partner API programs, multi-team engineering at scale, or any public announcements about unifying data or APIs across teams. Also note recent funding, M&A, or executive changes that would accelerate these needs.`,
     account.sourcedVia ? `Note: leads were sourced via ${account.sourcedVia} — research the end client (${account.company}), not the vendor.` : "",
     ``,
     account.accountNotes ? `EXISTING NOTES: ${account.accountNotes}` : "",
@@ -84,7 +84,22 @@ async function runJobSignals(apiKey, account) {
 }
 
 async function runEdgarResearch(apiKey, account) {
-  const prompt = `You are a B2B sales researcher at Apollo GraphQL. Search SEC EDGAR and financial news for "${account.company}". If public, summarize in 3-4 bullets: recent earnings highlights, revenue growth trend, technology investment mentions, and strategic priorities from their latest 10-K or earnings call. If private, search for funding rounds, investor announcements, or financial disclosures. If nothing findable, say so in one line. Return findings directly — no narration, no "I'll search for", no "Based on my research" preamble. Start with the first bullet.`;
+  const prompt = `You are a B2B sales researcher at Apollo GraphQL. Search SEC EDGAR, earnings call transcripts, and financial news for "${account.company}". Your goal is to find signals that indicate investment in areas where an API layer or data integration platform (like Apollo GraphOS) would be strategically relevant.
+
+Specifically look for executive quotes or disclosures about:
+- AI/ML investment or "AI-powered" product initiatives (implies data pipelines, model serving APIs)
+- Digital transformation, platform modernization, or microservices migration
+- "Unified data", "data mesh", "data platform", or API consolidation initiatives
+- Developer experience, internal platform, or engineering productivity investments
+- Margin expansion via technology or operational efficiency (implies automation/integration layer)
+- Cloud migration or multi-cloud strategy
+- Partner/ecosystem API programs or third-party integrations at scale
+
+If public: summarize 3-4 bullets from their latest 10-K, earnings call, or investor day. Quote executives directly where possible — specific quotes land better in outreach than paraphrases.
+If private: search for funding announcements, blog posts, or press releases with similar themes.
+If nothing relevant found, say so in one line.
+
+Return findings directly — no narration, no "I'll search for", no "Based on my research" preamble. Start with the first bullet.`;
   return callClaudeWithSearch(apiKey, [{ role: "user", content: prompt }]);
 }
 
