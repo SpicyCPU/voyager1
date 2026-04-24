@@ -37,6 +37,19 @@ export async function POST(request) {
 
   console.log(`[omni-webhook] parsed ${rows.length} rows — processing net-new only`);
 
+  // Log column names and first row sample so we can verify field mapping
+  if (rows[0]) {
+    const cols = Object.keys(rows[0]);
+    console.log("[omni-webhook] columns:", JSON.stringify(cols));
+    console.log("[omni-webhook] row[0] sample:", JSON.stringify({
+      Email: rows[0]["Email"],
+      "Full Name": rows[0]["Full Name"],
+      "Account Name": rows[0]["Account Name"],
+      "Studio Organization Name": rows[0]["Studio Organization Name"],
+      "Subscription Tier": rows[0]["Subscription Tier"],
+    }));
+  }
+
   const results = await processOmniRows(rows, { mode: "scheduled", source: "omni_webhook" });
 
   console.log("[omni-webhook]", { total: rows.length, ...results });
