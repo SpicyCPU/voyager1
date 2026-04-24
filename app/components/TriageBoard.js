@@ -44,6 +44,16 @@ function extractTier(extraContext) {
   return match ? match[1].trim() : null;
 }
 
+function extractStudioOrg(extraContext) {
+  if (!extraContext) return null;
+  const match = extraContext.match(/Studio Org:\s*([^·\n]+)/);
+  return match ? match[1].trim() : null;
+}
+
+function hasPaidOrgWarning(extraContext) {
+  return extraContext?.includes("⚠️ Org has paid members") ?? false;
+}
+
 function formatEngagementDate(dateStr) {
   if (!dateStr) return null;
   const date = new Date(dateStr);
@@ -75,6 +85,8 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
   const isError = lead.draftStatus === "error";
   const isIdle = lead.draftStatus === "idle";
   const tier = extractTier(lead.extraContext);
+  const studioOrg = extractStudioOrg(lead.extraContext);
+  const paidOrgWarning = hasPaidOrgWarning(lead.extraContext);
   const meta = accountMeta(lead.account);
   const engagedOn = formatEngagementDate(lead.lastSignalAt ?? lead.createdAt);
 
@@ -106,6 +118,16 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
         )}
       </div>
       {lead.signalType && <SignalBadge type={lead.signalType} />}
+      {studioOrg && (
+        <span style={{ fontSize: 11, color: A.textMuted, flexShrink: 0, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={studioOrg}>
+          {studioOrg}
+        </span>
+      )}
+      {paidOrgWarning && (
+        <span style={{ fontSize: 11, color: "#b45309", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 4, padding: "1px 5px", flexShrink: 0, fontWeight: 600 }} title="Another member of this Studio Org is on a paid plan — verify if this person is net-new or already a customer">
+          ⚠️ Verify
+        </span>
+      )}
       {tier && (
         <span style={{ fontSize: 11, color: A.textMuted, flexShrink: 0 }}>
           {tier} plan
