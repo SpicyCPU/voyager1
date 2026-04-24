@@ -177,7 +177,7 @@ export default function TriageBoard() {
   const [loading, setLoading] = useState(true);
   const [generatingIds, setGeneratingIds] = useState(new Set());
   const [generatingAll, setGeneratingAll] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  const [syncing, setSyncing] = useState(false);  // reserved for future use
   const [syncResult, setSyncResult] = useState(null);
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState("date_desc");
@@ -362,19 +362,6 @@ export default function TriageBoard() {
           onBlur={e => e.target.style.borderColor = A.satellite}
         />
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {syncResult && (
-            <span style={{
-              fontSize: 12, fontWeight: 600,
-              color: syncResult.ok ? "#16a34a" : "#dc2626",
-            }}>
-              {syncResult.ok
-                ? `↓ ${syncResult.created} new, ${syncResult.updated} updated`
-                : `Sync error: ${syncResult.error}`}
-            </span>
-          )}
-          <Btn variant="secondary" onClick={syncFromOmni} disabled={syncing}>
-            {syncing ? "Syncing…" : "↓ Sync Omni"}
-          </Btn>
           {needsAction > 0 && (
             <Btn variant="secondary" onClick={generateAll} disabled={generatingAll}>
               {generatingAll ? "Generating…" : `Generate all (${needsAction})`}
