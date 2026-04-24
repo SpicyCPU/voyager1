@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { leads } from "@/lib/schema";
-import { eq, inArray, isNull } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 
 // POST /api/ingest/omni-backfill?token=YOUR_INGEST_SECRET
 //
@@ -70,8 +70,12 @@ export async function POST(request) {
 
   console.log(`[omni-backfill] ${existingLeads.length} active leads to update`);
 
-  let updated = 0, skipped = 0;
   const now = new Date().toISOString();
+  const BATCH = 50;
+
+  // Build list of updates needed
+  const updates = [];
+  let skipped = 0;
 
   for (const lead of existingLeads) {
     const row = emailToRow.get(lead.email);
@@ -80,7 +84,6 @@ export async function POST(request) {
     const studioOrg = row["Studio Organization Name"]?.toString().trim() || "";
     const orgHasPaid = studioOrg && paidOrgs.has(studioOrg);
 
-    // Rebuild extraContext: strip old Studio Org / warning lines, prepend new ones
     const existing = lead.extraContext ?? "";
     const stripped = existing
       .split(" · ")
@@ -92,13 +95,21 @@ export async function POST(request) {
     if (orgHasPaid) prefix.push("⚠️ Org has paid members — verify if net-new");
 
     const newContext = [...prefix, ...(stripped ? [stripped] : [])].join(" · ");
-
     if (newContext === existing) { skipped++; continue; }
 
-    await db.update(leads)
-      .set({ extraContext: newContext, updatedAt: now })
-      .where(eq(leads.id, lead.id));
-    updated++;
+    updates.push({ id: lead.id, extraContext: newContext });
+  }
+
+  // Batch updates using db.batch() — single HTTP round trip per chunk
+  let updated = 0;
+  for (let i = 0; i < updates.length; i += BATCH) {
+    const chunk = updates.slice(i, i + BATCH);
+    await db.batch(
+      chunk.map(u =>
+        db.update(leads).set({ extraContext: u.extraContext, updatedAt: now }).where(eq(leads.id, u.id))
+      )
+    );
+    updated += chunk.length;
   }
 
   console.log(`[omni-backfill] done — updated: ${updated}, skipped: ${skipped}`);
