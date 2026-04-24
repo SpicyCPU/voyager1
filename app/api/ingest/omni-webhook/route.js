@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { processOmniRows } from "@/lib/omni-ingest";
+import { db } from "@/lib/db";
+import { appSettings } from "@/lib/schema";
+import { eq } from "drizzle-orm";
 
 // POST /api/ingest/omni-webhook?token=YOUR_INGEST_SECRET
 //
@@ -51,6 +54,22 @@ export async function POST(request) {
   }
 
   const results = await processOmniRows(rows, { mode: "scheduled", source: "omni_webhook" });
+
+  // Persist last delivery diagnostic to DB so /api/ingest/omni-debug can read it
+  const cols = rows[0] ? Object.keys(rows[0]) : [];
+  const sample = rows[0] ? {
+    Email: rows[0]["Email"],
+    "Full Name": rows[0]["Full Name"],
+    "Account Name": rows[0]["Account Name"],
+    "Studio Organization Name": rows[0]["Studio Organization Name"],
+    "Subscription Tier": rows[0]["Subscription Tier"],
+  } : {};
+  const diagnostic = { at: new Date().toISOString(), total: rows.length, cols, sample, results };
+  try {
+    await db.insert(appSettings)
+      .values({ id: "omni_last_delivery", rules: JSON.stringify(diagnostic), updatedAt: new Date().toISOString() })
+      .onConflictDoUpdate({ target: appSettings.id, set: { rules: JSON.stringify(diagnostic), updatedAt: new Date().toISOString() } });
+  } catch { /* don't fail delivery on diagnostic write error */ }
 
   console.log("[omni-webhook]", { total: rows.length, ...results });
   return NextResponse.json({ total: rows.length, ...results });
