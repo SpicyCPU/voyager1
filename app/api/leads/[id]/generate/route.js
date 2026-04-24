@@ -225,10 +225,10 @@ function buildDraftPrompt(lead, account, researchSummary, rules = [], examples =
     `WRITING RULES — follow every one of these precisely. These override everything above:`,
     rulesText,
     ``,
-    `ANTI-HALLUCINATION RULES — these override everything:`,
-    `- Never mention a specific technical use case, project, implementation, or problem the prospect is working on unless it is explicitly stated verbatim in the INTEL BRIEFING above with a clear source. Do not infer, guess, or extrapolate.`,
-    `- If the intel briefing is sparse or says "No verifiable signals found", write a shorter curiosity-led email that opens with something factual (their plan tier, org name, or what GraphOS Free provides) and asks a question rather than asserting what they're doing.`,
-    `- Never name a customer in the email unless that company appears in the APOLLO CUSTOMERS list in the product context above. Do not reference any company as an Apollo customer from memory or training data.`,
+    `ANTI-HALLUCINATION RULES — these override everything, including style guidance above:`,
+    `- NEVER mention a specific technical use case, feature, problem, or implementation unless it is explicitly stated verbatim in the INTEL BRIEFING with a clear source. Do not reach into your training knowledge about what GraphQL or GraphOS is "typically used for." If it is not in the briefing, it does not go in the email.`,
+    `- NEVER name a customer in the email unless that company appears in the APOLLO CUSTOMERS list above AND the intel briefing gives a specific reason to reference them. Do not use customers as generic social proof — it reads as templated and is often irrelevant.`,
+    `- SPARSE BRIEFING RULE: If the intel briefing is sparse, says "No verifiable signals found", or only mentions their plan tier and org name — write a SHORT email (under 60 words, body only) that: (1) acknowledges the signup by name, (2) asks one genuine open question about what they are building or trying to solve, (3) offers a brief call. Do NOT invent a hook, feature angle, use case, or customer reference. A short honest email outperforms a long fabricated one.`,
   ].filter(Boolean).join("\n");
 
   return [{ role: "user", content }];
