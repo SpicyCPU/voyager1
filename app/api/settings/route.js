@@ -7,16 +7,16 @@ export const RULES_CAP = null;         // No hard cap
 export const RULES_WARN_AT = 20;       // Soft warning shown in Settings UI
 
 export const DEFAULT_RULES = [
-  "Never use em dashes, en dashes, or hyphens in the email body",
-  "No hollow phrases: 'hope this finds you well', 'reaching out', 'touch base', 'synergy', 'I wanted to'",
-  "Reference 1-2 specific signals — make it obvious you did your homework, never be vague",
+  "NEVER use any dashes anywhere: no em dash (—), no en dash (–), no hyphen (-) used as punctuation. Rewrite the sentence instead. This is the single most important rule.",
+  "No hollow phrases: 'hope this finds you well', 'reaching out', 'touch base', 'synergy', 'I wanted to', 'I am writing to'",
+  "Reference 1-2 specific signals. Make it obvious you did your homework. Never be vague.",
   "Email subject: 6 words max, no clickbait, no questions",
   "LinkedIn message: 3 sentences max",
-  "Write like a human — conversational, specific, never templated or corporate",
+  "Write like a human. Conversational, specific, never templated or corporate.",
   "Reference 1-2 similar Apollo customers by name to build credibility",
   "Tie research directly to a specific GraphOS or Apollo feature to avoid a vague CTA",
   "Place customer reference after a pain point, not as an opener with 'we work with'",
-  "Clear, specific CTA — demonstrate Apollo value before asking for meeting time",
+  "Clear, specific CTA. Demonstrate Apollo value before asking for meeting time.",
   "For large enterprises, ensure research is relevant to their specific division or team",
   "Open with an observation or insight, not a compliment or introduction",
 ];
