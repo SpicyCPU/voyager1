@@ -41,34 +41,37 @@ export async function POST(request) {
   return NextResponse.json({ total: rows.length, ...results });
 }
 
-// ── CSV parser (handles quoted fields with embedded commas/newlines) ──────────
+// ── CSV/TSV parser — auto-detects delimiter from header row ──────────────────
 
 function parseCSV(text) {
   const lines = text.trim().split("\n");
   if (lines.length < 2) return [];
-  const headers = parseCSVLine(lines[0]);
+  // Detect delimiter: if header has more tabs than commas, it's TSV
+  const headerLine = lines[0];
+  const tabCount = (headerLine.match(/\t/g) ?? []).length;
+  const commaCount = (headerLine.match(/,/g) ?? []).length;
+  const delim = tabCount > commaCount ? "\t" : ",";
+
+  const headers = splitLine(headerLine, delim);
   return lines.slice(1)
     .filter(l => l.trim())
     .map(line => {
-      const values = parseCSVLine(line);
+      const values = splitLine(line, delim);
       return Object.fromEntries(headers.map((h, i) => [h.trim(), (values[i] ?? "").trim()]));
     });
 }
 
-function parseCSVLine(line) {
+function splitLine(line, delim) {
+  if (delim === "\t") return line.split("\t");
+  // CSV: handle quoted fields with embedded commas
   const result = [];
   let current = "";
   let inQuotes = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (ch === "," && !inQuotes) {
-      result.push(current);
-      current = "";
-    } else {
-      current += ch;
-    }
+    if (ch === '"') { inQuotes = !inQuotes; }
+    else if (ch === "," && !inQuotes) { result.push(current); current = ""; }
+    else { current += ch; }
   }
   result.push(current);
   return result;
