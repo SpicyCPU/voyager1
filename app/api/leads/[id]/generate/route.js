@@ -132,6 +132,8 @@ function buildResearchPrompt(lead, account) {
     "",
     `If the Studio org name looks like an internal team name (e.g. "Platform Team", "API Core", "GraphQL Infra") rather than a real company, flag the likely parent company if identifiable from the email domain or other signals.`,
     ``,
+    RESEARCH_INTEGRITY_RULES,
+    ``,
     `After your intelligence bullets, append exactly this block (fill in values, do not skip):`,
     `---METADATA---`,
     `{"industry":"<fintech|healthcare|defense|logistics|retail|media|saas|consulting|government|manufacturing|other>","headcount":"<1-10|11-50|51-200|201-1000|1000+|unknown>","companyType":"<startup|scaleup|enterprise|consultancy|government|nonprofit|unknown>","salesQuality":"<high|medium|low>","hiddenOrg":"<parent company name or null>"}`,
@@ -139,6 +141,16 @@ function buildResearchPrompt(lead, account) {
 
   return [{ role: "user", content: lines }];
 }
+
+// ── Research prompt instructions (appended to every research prompt) ──────────
+// These are the anti-hallucination guards that must appear after all context.
+const RESEARCH_INTEGRITY_RULES = `
+CRITICAL — INTEGRITY RULES (non-negotiable):
+- Only write bullets based on information you actually found and can cite. If you searched and found nothing about this person's specific work, role, or projects, say "No verifiable signals found for this individual" — do not fill the gap with plausible-sounding details.
+- NEVER infer, guess, or extrapolate what the prospect might be working on. Do not write things like "likely working on X" or "probably using Y for Z" unless it's a direct quote or clearly stated fact from a source.
+- NEVER fabricate a use case, technical problem, or implementation detail. If you don't have a source for it, leave it out.
+- If the only signals are their email domain and a studio org name, say so. That is honest and useful. A sparse briefing is better than a fabricated one.
+`.trim();
 
 function parseResearchOutput(text) {
   const parts = text.split(/---METADATA---/i);
@@ -212,6 +224,11 @@ function buildDraftPrompt(lead, account, researchSummary, rules = [], examples =
     "",
     `WRITING RULES — follow every one of these precisely. These override everything above:`,
     rulesText,
+    ``,
+    `ANTI-HALLUCINATION RULES — these override everything:`,
+    `- Never mention a specific technical use case, project, implementation, or problem the prospect is working on unless it is explicitly stated verbatim in the INTEL BRIEFING above with a clear source. Do not infer, guess, or extrapolate.`,
+    `- If the intel briefing is sparse or says "No verifiable signals found", write a shorter curiosity-led email that opens with something factual (their plan tier, org name, or what GraphOS Free provides) and asks a question rather than asserting what they're doing.`,
+    `- Never name a customer in the email unless that company appears in the APOLLO CUSTOMERS list in the product context above. Do not reference any company as an Apollo customer from memory or training data.`,
   ].filter(Boolean).join("\n");
 
   return [{ role: "user", content }];
