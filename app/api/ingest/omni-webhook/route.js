@@ -35,6 +35,17 @@ export async function POST(request) {
     return NextResponse.json({ error: "CSV empty or unreadable" }, { status: 400 });
   }
 
+  // Debug: log first row keys and sample values to confirm parsing
+  if (rows[0]) {
+    const keys = Object.keys(rows[0]);
+    console.log("[omni-webhook] columns detected:", keys.slice(0, 6), "...");
+    console.log("[omni-webhook] first row sample:", {
+      email: rows[0]["Email"],
+      name: rows[0]["Full Name"],
+      company: rows[0]["Account Name"] || rows[0]["Studio Organization Name"],
+    });
+  }
+
   const results = await processOmniRows(rows, { mode: "scheduled", source: "omni_webhook" });
 
   console.log("[omni-webhook]", { total: rows.length, ...results });
