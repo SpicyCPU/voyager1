@@ -132,6 +132,7 @@ function buildResearchPrompt(lead, account) {
     "",
     `COMPANY IDENTIFICATION RULE: If the company name looks like a personal Studio workspace (e.g. "[Name]'s Team", "[Name]'s Org", "[username]'s Workspace", or any variation of a personal name + possessive) — STOP. Do not research that name. It is not a real company. Instead, use the prospect's email domain to identify their real employer. A @comcast.net email means they work at Comcast. A @jpmorgan.com email means JPMorgan Chase. Research the real employer from the email domain, not the Studio org name.`,
     `If the company name looks like an internal team name (e.g. "Platform Team", "API Core", "GraphQL Infra") without a personal possessive, it may be a real org — use the email domain to confirm the parent company.`,
+    `INTERNAL vs PRODUCT CONFUSION RULE: Always research the company as an ENGINEERING ORGANIZATION with internal systems and teams — not as a product or vendor. If the company makes developer tools, observability software, databases, or APIs (e.g. Datadog, Elastic, Stripe, Twilio, MongoDB), do NOT research or reference their own product's features, integrations, or capabilities. Focus entirely on how their internal engineering teams build and operate their own systems. The prospect works at the company — they feel the pain of building at scale internally, not the pain of using their own product.`,
     ``,
     RESEARCH_INTEGRITY_RULES,
     ``,
