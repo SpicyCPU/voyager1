@@ -54,6 +54,18 @@ function hasPaidOrgWarning(extraContext) {
   return extraContext?.includes("⚠️ Org has paid members") ?? false;
 }
 
+function extractGitHubCompany(extraContext) {
+  if (!extraContext) return null;
+  const match = extraContext.match(/GitHub Co:\s*([^·\n]+)/);
+  return match ? match[1].trim() : null;
+}
+
+function extractGitHubLocation(extraContext) {
+  if (!extraContext) return null;
+  const match = extraContext.match(/Location:\s*([^·\n]+)/);
+  return match ? match[1].trim() : null;
+}
+
 function formatEngagementDate(dateStr) {
   if (!dateStr) return null;
   const date = new Date(dateStr);
@@ -87,6 +99,8 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
   const tier = extractTier(lead.extraContext);
   const studioOrg = extractStudioOrg(lead.extraContext);
   const paidOrgWarning = hasPaidOrgWarning(lead.extraContext);
+  const ghCompany = extractGitHubCompany(lead.extraContext);
+  const ghLocation = extractGitHubLocation(lead.extraContext);
   const meta = accountMeta(lead.account);
   const engagedOn = formatEngagementDate(lead.lastSignalAt ?? lead.createdAt);
 
@@ -107,12 +121,21 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
           {lead.title && lead.account?.company ? " · " : ""}
           {lead.account?.company ?? ""}
         </div>
-        {(meta || lead.email) && (
+        {(meta || lead.email || ghCompany || ghLocation) && (
           <div style={{ fontSize: 11, color: A.textMuted, marginTop: 1, opacity: 0.75 }}>
             {meta}
             {meta && lead.email ? " · " : ""}
             {lead.email && (
               <span style={{ fontFamily: "monospace", letterSpacing: "-0.01em" }}>{lead.email}</span>
+            )}
+            {(meta || lead.email) && (ghCompany || ghLocation) ? " · " : ""}
+            {ghCompany && (
+              <span title="Identified via GitHub profile" style={{ color: "#1d6e37" }}>
+                ⌥ {ghCompany}{ghLocation ? ` · ${ghLocation}` : ""}
+              </span>
+            )}
+            {!ghCompany && ghLocation && (
+              <span>📍 {ghLocation}</span>
             )}
           </div>
         )}
@@ -286,7 +309,8 @@ export default function TriageBoard() {
         l.name?.toLowerCase().includes(q) ||
         l.account?.company?.toLowerCase().includes(q) ||
         l.title?.toLowerCase().includes(q) ||
-        l.email?.toLowerCase().includes(q)
+        l.email?.toLowerCase().includes(q) ||
+        l.extraContext?.toLowerCase().includes(q)
       )
     : leads;
 
