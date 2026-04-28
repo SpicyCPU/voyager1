@@ -101,6 +101,7 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
   const paidOrgWarning = hasPaidOrgWarning(lead.extraContext);
   const ghCompany = extractGitHubCompany(lead.extraContext);
   const ghLocation = extractGitHubLocation(lead.extraContext);
+  const isConsultancy = lead.account?.companyType === "consultancy";
   const meta = accountMeta(lead.account);
   const engagedOn = formatEngagementDate(lead.lastSignalAt ?? lead.createdAt);
 
@@ -144,6 +145,11 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
       {studioOrg && (
         <span style={{ fontSize: 11, color: A.textMuted, flexShrink: 0, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={studioOrg}>
           {studioOrg}
+        </span>
+      )}
+      {isConsultancy && (
+        <span style={{ fontSize: 11, color: "#6b21a8", background: "#f3e8ff", border: "1px solid #d8b4fe", borderRadius: 4, padding: "1px 5px", flexShrink: 0, fontWeight: 600 }} title="Consultancy or SI — likely building on behalf of a client. Generic email will be generated.">
+          SI
         </span>
       )}
       {paidOrgWarning && (

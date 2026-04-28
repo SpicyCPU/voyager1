@@ -145,6 +145,20 @@ function buildResearchPrompt(lead, account) {
   return [{ role: "user", content: lines }];
 }
 
+// ── Known SI / consultancy names (lowercase) ─────────────────────────────────
+const KNOWN_SI_NAMES = new Set([
+  "accenture", "deloitte", "infosys", "tata consultancy services", "tcs",
+  "wipro", "cognizant", "capgemini", "hcl", "hcl technologies",
+  "tech mahindra", "mphasis", "hexaware", "ltimindtree", "lti",
+  "mindtree", "persistent systems", "niit technologies", "syntel",
+  "dxc technology", "unisys", "atos", "ntt data", "fujitsu",
+  "ibm consulting", "kpmg", "pwc", "ey", "ernst & young",
+  "booz allen hamilton", "leidos", "saic", "thoughtworks",
+  "slalom", "publicis sapient", "sapient", "globant", "epam",
+  "endava", "softserve", "luxoft", "virtusa", "happiest minds",
+  "zensar", "cyient", "mastech", "igate",
+]);
+
 // ── Research prompt instructions (appended to every research prompt) ──────────
 // These are the anti-hallucination guards that must appear after all context.
 const RESEARCH_INTEGRITY_RULES = `
@@ -205,6 +219,12 @@ function buildDraftPrompt(lead, account, researchSummary, rules = [], examples =
     ? `TIER CONTEXT: This org is on the Free plan — intent quality varies widely. If the intel briefing shows strong org size, request volume, or team signals, treat them like a serious prospect. If signals are weak, keep the email lighter and focus on curiosity rather than urgency.`
     : null;
 
+  // Consultancy / SI detection — use generic outreach, don't over-personalize
+  const isConsultancy = account.companyType === "consultancy" || KNOWN_SI_NAMES.has(account.company?.toLowerCase());
+  const consultancyGuidance = isConsultancy
+    ? `CONSULTANCY / SI MODE: This person works at a consultancy or systems integrator. They are likely building on behalf of a client, not for their own company. Do NOT research or reference the consultancy's internal tech stack — it is irrelevant. Write a short, generic email (under 60 words) that: (1) acknowledges they signed up, (2) notes that consultants often use Apollo Federation across client engagements, (3) offers a brief call to discuss how GraphOS could support their client work. Keep it light and open — do not assume what they are building.`
+    : null;
+
   const content = [
     `You are writing personalized outreach for an Apollo GraphQL sales rep. Return ONLY valid JSON matching this shape:`,
     `{"email_subject":"...","email_body":"...","linkedin_message":"..."}`,
@@ -213,7 +233,7 @@ function buildDraftPrompt(lead, account, researchSummary, rules = [], examples =
     "",
     APOLLO_PRODUCT_CONTEXT,
     "",
-    tierGuidance ?? "",
+    consultancyGuidance ?? tierGuidance ?? "",
     "",
     `INTEL BRIEFING:\n${researchSummary}`,
     "",
