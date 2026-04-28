@@ -151,6 +151,7 @@ CRITICAL — INTEGRITY RULES (non-negotiable):
 - Only write bullets based on information you actually found and can cite. If you searched and found nothing about this person's specific work, role, or projects, say "No verifiable signals found for this individual" — do not fill the gap with plausible-sounding details.
 - NEVER infer, guess, or extrapolate what the prospect might be working on. Do not write things like "likely working on X" or "probably using Y for Z" unless it's a direct quote or clearly stated fact from a source.
 - NEVER fabricate a use case, technical problem, or implementation detail. If you don't have a source for it, leave it out.
+- TECHNICAL CLAIMS REQUIRE A SOURCE: If you state a specific technical detail — a URL path, an API endpoint, a product name, a version number, a repository, a framework, an architecture pattern — you must have found it at a real public URL. Do not infer endpoint paths from naming conventions (e.g. do not write "/federation-gateway/graphql" just because that is a common Apollo pattern). If you cannot point to where you found it, do not include it.
 - If the only signals are their email domain and a studio org name, say so. That is honest and useful. A sparse briefing is better than a fabricated one.
 `.trim();
 
