@@ -114,6 +114,7 @@ export async function POST(request, { params }) {
 function buildResearchPrompt(lead, account) {
   const lines = [
     `You are a B2B sales researcher at Apollo GraphQL. Synthesize the following signals about a prospect into a concise 3-5 bullet intelligence briefing. Each bullet should be one sentence — specific, actionable, no fluff. The goal is to support a rep booking an intro call — focus on signals that indicate organizational readiness and buying potential. Return findings directly — do not narrate your process, do not use phrases like "I'll search for", "Let me search", or "Based on my research". Start immediately with the first bullet.`,
+    `SOURCE CITATION REQUIRED: Every bullet that makes a specific factual claim must end with a bracketed source — the domain or publication where you found it. Format: "• [claim]. [source.com]". If you cannot cite a source for a claim, do not include that claim. Examples of correct format: "• Home Depot runs a federated GraphQL gateway. [medium.com/homedepotech]" or "• CEO quoted on AI investment in Q3 earnings. [ir.homedepot.com]". Claims without sources are not permitted.`,
     "",
     APOLLO_PRODUCT_CONTEXT,
     "",
