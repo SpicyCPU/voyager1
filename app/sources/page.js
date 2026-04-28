@@ -152,6 +152,7 @@ export default function SourcesPage() {
   const liveSources = DATA_SOURCES.filter(s => s.status === "live").length;
   const wiredSources = DATA_SOURCES.filter(s => s.status === "wired_not_connected").length;
   const plannedSources = DATA_SOURCES.filter(s => ["planned", "partial"].includes(s.status)).length;
+  const deprecatedSources = DATA_SOURCES.filter(s => s.status === "deprecated").length;
 
   return (
     <AppShell>
@@ -170,6 +171,7 @@ export default function SourcesPage() {
               { label: "Live", count: liveSources, color: STATUS_META.live.color },
               { label: "Wired, not connected", count: wiredSources, color: STATUS_META.wired_not_connected.color },
               { label: "Planned", count: plannedSources, color: STATUS_META.planned.color },
+              { label: "Deprecated", count: deprecatedSources, color: STATUS_META.deprecated.color },
             ].map(({ label, count, color }) => (
               <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />
