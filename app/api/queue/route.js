@@ -21,7 +21,7 @@ export async function GET() {
     where: (l, { and, eq, or, isNull, inArray }) =>
       and(
         isNull(l.deletedAt),
-        inArray(l.draftStatus, ["idle", "done", "error"]),
+        inArray(l.draftStatus, ["idle", "done", "error", "briefed", "researching", "drafting"]),
         or(eq(l.outreachStatus, "draft"), isNull(l.outreachStatus))
       ),
     with: { account: true },
