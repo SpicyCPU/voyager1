@@ -3,8 +3,7 @@ import { db } from "@/lib/db";
 import { appSettings } from "@/lib/schema";
 import { eq } from "drizzle-orm";
 
-export const RULES_CAP = null;         // No hard cap
-export const RULES_WARN_AT = 20;       // Soft warning shown in Settings UI
+export const RULES_WARN_AT = 20;
 
 export const DEFAULT_RULES = [
   "NEVER use any dashes anywhere: no em dash (—), no en dash (–), no hyphen (-) used as punctuation. Rewrite the sentence instead. This is the single most important rule.",
@@ -21,45 +20,70 @@ export const DEFAULT_RULES = [
   "Open with an observation or insight, not a compliment or introduction",
 ];
 
-async function getOrSeedSettings() {
-  let row = await db.query.appSettings.findFirst({
-    where: eq(appSettings.id, "default"),
-  });
+export const DEFAULT_EMAIL_STRATEGY = `Goal: book a 20-minute intro call. One specific hook, one clear ask.
 
+These leads signed up for GraphOS — they have real intent. The email should feel like you understand their specific situation, not like a mass outreach template. Earn the conversation by demonstrating you did your homework.`;
+
+export const DEFAULT_RESEARCH_FOCUS = `Priority signals to find:
+- Engineering blog posts, conference talks, or public architecture discussions
+- Job postings mentioning GraphQL, API platform, federation, or microservices
+- Recent funding, acquisitions, or leadership hires (signals of growth/change)
+- Earnings call quotes about API strategy, developer platform, or digital transformation
+- Public GitHub repos or tech stack mentions
+
+Avoid: generic company descriptions, marketing copy, product announcements unrelated to their engineering org.`;
+
+async function getOrSeedSettings() {
+  let row = await db.query.appSettings.findFirst({ where: eq(appSettings.id, "default") });
   if (!row) {
     const now = new Date().toISOString();
-    [row] = await db.insert(appSettings)
-      .values({ id: "default", rules: JSON.stringify(DEFAULT_RULES), updatedAt: now })
-      .returning();
+    [row] = await db.insert(appSettings).values({
+      id: "default",
+      rules: JSON.stringify(DEFAULT_RULES),
+      emailStrategy: DEFAULT_EMAIL_STRATEGY,
+      researchFocus: DEFAULT_RESEARCH_FOCUS,
+      updatedAt: now,
+    }).returning();
   }
-
   return row;
 }
 
 export async function GET() {
   const row = await getOrSeedSettings();
-  const rules = row.rules ? JSON.parse(row.rules) : DEFAULT_RULES;
-  return NextResponse.json({ rules, warnAt: RULES_WARN_AT });
+  return NextResponse.json({
+    rules: row.rules ? JSON.parse(row.rules) : DEFAULT_RULES,
+    emailStrategy: row.emailStrategy ?? DEFAULT_EMAIL_STRATEGY,
+    researchFocus: row.researchFocus ?? DEFAULT_RESEARCH_FOCUS,
+    warnAt: RULES_WARN_AT,
+  });
 }
 
 export async function PUT(request) {
-  const { rules } = await request.json();
-  if (!Array.isArray(rules)) return NextResponse.json({ error: "rules must be an array" }, { status: 400 });
-
+  const body = await request.json();
   const now = new Date().toISOString();
 
+  const updates = {};
+  if (Array.isArray(body.rules)) updates.rules = JSON.stringify(body.rules);
+  if (typeof body.emailStrategy === "string") updates.emailStrategy = body.emailStrategy;
+  if (typeof body.researchFocus === "string") updates.researchFocus = body.researchFocus;
+
+  if (!Object.keys(updates).length) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  }
+
+  updates.updatedAt = now;
   const existing = await db.query.appSettings.findFirst({ where: eq(appSettings.id, "default") });
   let row;
   if (existing) {
-    [row] = await db.update(appSettings)
-      .set({ rules: JSON.stringify(rules), updatedAt: now })
-      .where(eq(appSettings.id, "default"))
-      .returning();
+    [row] = await db.update(appSettings).set(updates).where(eq(appSettings.id, "default")).returning();
   } else {
-    [row] = await db.insert(appSettings)
-      .values({ id: "default", rules: JSON.stringify(rules), updatedAt: now })
-      .returning();
+    [row] = await db.insert(appSettings).values({ id: "default", ...updates }).returning();
   }
 
-  return NextResponse.json({ rules: JSON.parse(row.rules), warnAt: RULES_WARN_AT });
+  return NextResponse.json({
+    rules: row.rules ? JSON.parse(row.rules) : DEFAULT_RULES,
+    emailStrategy: row.emailStrategy ?? DEFAULT_EMAIL_STRATEGY,
+    researchFocus: row.researchFocus ?? DEFAULT_RESEARCH_FOCUS,
+    warnAt: RULES_WARN_AT,
+  });
 }

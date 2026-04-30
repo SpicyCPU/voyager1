@@ -6,25 +6,11 @@ import Avatar from "./ui/Avatar";
 import { DraftPill, OutreachPill } from "./ui/StatusPill";
 import FeedbackPanel from "./FeedbackPanel";
 
-
 const inp = (extra = {}) => ({
   width: "100%", padding: "8px 10px", borderRadius: 6, fontSize: 13,
   border: `1px solid ${A.satellite}`, background: A.white,
   outline: "none", color: A.text, ...extra,
 });
-
-function InsightCard({ title, content }) {
-  if (!content) return null;
-  return (
-    <div style={{
-      padding: 12, borderRadius: 8, background: A.offWhite,
-      border: `1px solid ${A.satellite}`, flex: 1,
-    }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: A.textMuted, textTransform: "uppercase", marginBottom: 6 }}>{title}</div>
-      <div style={{ fontSize: 12, color: A.text, lineHeight: 1.5 }}>{content}</div>
-    </div>
-  );
-}
 
 function Timer({ startedAt }) {
   const [secs, setSecs] = useState(0);
@@ -43,9 +29,11 @@ export default function LeadDetail({ lead: initialLead, onUpdated, onEdit, onDel
 
   useEffect(() => { setLead(initialLead); }, [initialLead]);
 
+  const isRunning = lead.draftStatus === "running";
+
   // Poll while generating
   useEffect(() => {
-    if (lead.draftStatus !== "running") { setGeneratingAt(null); return; }
+    if (!isRunning) { setGeneratingAt(null); return; }
     if (!generatingAt) setGeneratingAt(Date.now());
     const t = setInterval(async () => {
       const res = await fetch(`/api/accounts/${lead.accountId}`);
@@ -61,18 +49,14 @@ export default function LeadDetail({ lead: initialLead, onUpdated, onEdit, onDel
 
   async function generate() {
     setLead(l => ({ ...l, draftStatus: "running" }));
+    setGeneratingAt(Date.now());
     try {
       const res = await fetch(`/api/leads/${lead.id}/generate`, { method: "POST" });
       const data = await res.json();
-      if (data.lead) {
-        setLead(data.lead); onUpdated?.(data.lead);
-      } else {
-        setLead(l => ({ ...l, draftStatus: "error" }));
-        console.error("Generate failed:", data.error);
-      }
-    } catch (err) {
+      if (data.lead) { setLead(data.lead); onUpdated?.(data.lead); }
+      else setLead(l => ({ ...l, draftStatus: "error" }));
+    } catch {
       setLead(l => ({ ...l, draftStatus: "error" }));
-      console.error("Generate error:", err);
     }
   }
 
@@ -109,7 +93,6 @@ export default function LeadDetail({ lead: initialLead, onUpdated, onEdit, onDel
     saveField(field, text);
   }
 
-  const isRunning = lead.draftStatus === "running";
   const hasEmail = !!lead.emailDraft;
 
   return (
@@ -124,31 +107,40 @@ export default function LeadDetail({ lead: initialLead, onUpdated, onEdit, onDel
           <div style={{ fontWeight: 700, fontSize: 15 }}>{lead.name}</div>
           {lead.title && <div style={{ color: A.textMuted, fontSize: 12 }}>{lead.title}</div>}
           {lead.email && (
-            <a
-              href={`mailto:${lead.email}`}
-              style={{ fontSize: 12, color: A.horizon, textDecoration: "none" }}
+            <a href={`mailto:${lead.email}`} style={{ fontSize: 12, color: A.horizon, textDecoration: "none" }}
               onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
-              onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
-            >
+              onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}>
               {lead.email}
             </a>
           )}
         </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 6 }}>
           <DraftPill status={lead.draftStatus} />
           <OutreachPill status={lead.outreachStatus} />
         </div>
       </div>
 
       <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+
         {/* Research summary */}
         {lead.researchSummary && (
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: A.textMuted, textTransform: "uppercase", marginBottom: 6 }}>Intel Briefing</div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <InsightCard title="Research" content={lead.researchSummary} />
+          <details style={{ cursor: "pointer" }}>
+            <summary style={{
+              fontSize: 11, fontWeight: 700, color: A.textMuted,
+              textTransform: "uppercase", listStyle: "none", display: "flex",
+              alignItems: "center", gap: 6, userSelect: "none",
+            }}>
+              <span style={{ fontSize: 10 }}>▸</span> Intel Briefing
+            </summary>
+            <div style={{
+              marginTop: 8, padding: "10px 12px", borderRadius: 6,
+              background: A.offWhite, border: `1px solid ${A.satellite}`,
+              fontSize: 12, color: A.text, lineHeight: 1.6,
+              whiteSpace: "pre-wrap",
+            }}>
+              {lead.researchSummary}
             </div>
-          </div>
+          </details>
         )}
 
         {/* Generate button */}
@@ -159,7 +151,7 @@ export default function LeadDetail({ lead: initialLead, onUpdated, onEdit, onDel
             </Btn>
             {isRunning && generatingAt && <Timer startedAt={generatingAt} />}
             {lead.draftStatus === "error" && (
-              <span style={{ color: "#dc2626", fontSize: 12 }}>Generation failed</span>
+              <span style={{ color: "#dc2626", fontSize: 12 }}>Generation failed — try again</span>
             )}
           </div>
         )}
@@ -167,15 +159,13 @@ export default function LeadDetail({ lead: initialLead, onUpdated, onEdit, onDel
         {/* Email / LinkedIn tabs */}
         {hasEmail && (
           <div>
-            {/* Tab switcher */}
             <div style={{ display: "flex", gap: 0, marginBottom: 12, borderBottom: `1px solid ${A.satellite}` }}>
               {["email", "linkedin"].map(t => (
                 <button key={t} onClick={() => setTab(t)} style={{
                   padding: "6px 16px", background: "none", border: "none",
                   borderBottom: tab === t ? `2px solid ${A.horizon}` : "2px solid transparent",
                   color: tab === t ? A.horizon : A.textMuted,
-                  fontWeight: tab === t ? 600 : 400, fontSize: 13, cursor: "pointer",
-                  marginBottom: -1,
+                  fontWeight: tab === t ? 600 : 400, fontSize: 13, cursor: "pointer", marginBottom: -1,
                 }}>
                   {t === "email" ? "Email" : "LinkedIn"}
                 </button>
@@ -187,41 +177,30 @@ export default function LeadDetail({ lead: initialLead, onUpdated, onEdit, onDel
               </div>
             </div>
 
-            {/* Email tab */}
             {tab === "email" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: A.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Subject</div>
-                  <input
-                    style={inp()}
-                    value={lead.emailSubject ?? ""}
+                  <input style={inp()} value={lead.emailSubject ?? ""}
                     onChange={e => setLead(l => ({ ...l, emailSubject: e.target.value }))}
-                    onBlur={e => saveField("emailSubject", e.target.value)}
-                  />
+                    onBlur={e => saveField("emailSubject", e.target.value)} />
                 </div>
                 <div>
                   <div style={{ fontSize: 11, fontWeight: 600, color: A.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Body</div>
-                  <textarea
-                    style={inp({ minHeight: 180, resize: "vertical" })}
-                    value={lead.emailDraft ?? ""}
+                  <textarea style={inp({ minHeight: 180, resize: "vertical" })} value={lead.emailDraft ?? ""}
                     onChange={e => setLead(l => ({ ...l, emailDraft: e.target.value }))}
-                    onBlur={e => saveField("emailDraft", e.target.value)}
-                  />
+                    onBlur={e => saveField("emailDraft", e.target.value)} />
                 </div>
                 <FeedbackPanel lead={lead} field="emailDraft" onRefined={handleRefined} />
               </div>
             )}
 
-            {/* LinkedIn tab */}
             {tab === "linkedin" && (
               <div>
                 <div style={{ fontSize: 11, fontWeight: 600, color: A.textMuted, textTransform: "uppercase", marginBottom: 4 }}>Message</div>
-                <textarea
-                  style={inp({ minHeight: 120, resize: "vertical" })}
-                  value={lead.linkedinNote ?? ""}
+                <textarea style={inp({ minHeight: 120, resize: "vertical" })} value={lead.linkedinNote ?? ""}
                   onChange={e => setLead(l => ({ ...l, linkedinNote: e.target.value }))}
-                  onBlur={e => saveField("linkedinNote", e.target.value)}
-                />
+                  onBlur={e => saveField("linkedinNote", e.target.value)} />
                 <FeedbackPanel lead={lead} field="linkedinNote" onRefined={handleRefined} />
               </div>
             )}
@@ -234,10 +213,9 @@ export default function LeadDetail({ lead: initialLead, onUpdated, onEdit, onDel
             <Btn variant="success" onClick={markSent}>Mark sent</Btn>
           )}
           {hasEmail && lead.email && (
-            <Btn variant="secondary" onClick={() => {
-              // Gmail MCP — browser-initiated
-              navigator.clipboard.writeText(`Subject: ${lead.emailSubject}\n\n${lead.emailDraft}`);
-            }}>Copy for Gmail</Btn>
+            <Btn variant="secondary" onClick={() => navigator.clipboard.writeText(`Subject: ${lead.emailSubject}\n\n${lead.emailDraft}`)}>
+              Copy for Gmail
+            </Btn>
           )}
           <Btn variant="ghost" onClick={() => onEdit?.(lead)}>Edit prospect</Btn>
           <Btn variant="danger" small onClick={handleDelete}>Delete</Btn>

@@ -7,15 +7,16 @@ export default function FeedbackPanel({ lead, field, onRefined }) {
   const [feedback, setFeedback] = useState("");
   const [refining, setRefining] = useState(false);
   const [history, setHistory] = useState([]);
-
   const [stored, setStored] = useState(false);
   const [storedDismissed, setStoredDismissed] = useState(false);
+  const [reSearched, setReSearched] = useState(false);
 
-  async function refine() {
+  async function refine(reSearch = false) {
     if (!feedback.trim()) return;
     setRefining(true);
     setStored(false);
     setStoredDismissed(false);
+    setReSearched(false);
 
     const currentText = field === "emailDraft" ? lead.emailDraft : lead.linkedinNote;
     const capturedFeedback = feedback;
@@ -26,11 +27,12 @@ export default function FeedbackPanel({ lead, field, onRefined }) {
       const res = await fetch(`/api/leads/${lead.id}/refine`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ field, feedback: capturedFeedback, currentText }),
+        body: JSON.stringify({ field, feedback: capturedFeedback, currentText, reSearch }),
       });
       const data = await res.json();
       onRefined?.(field, data.updatedText);
       setStored(true);
+      setReSearched(data.reSearched ?? false);
     } finally {
       setRefining(false);
     }
@@ -54,7 +56,7 @@ export default function FeedbackPanel({ lead, field, onRefined }) {
       <textarea
         value={feedback}
         onChange={e => setFeedback(e.target.value)}
-        placeholder="e.g. Make it shorter. Lead with the job posting signal. Tone down the opener."
+        placeholder={`e.g. "Make it shorter" · "Lead with the job posting signal" · "Find their recent funding and use it as a hook"`}
         style={{
           width: "100%", padding: "8px 10px", borderRadius: 6, fontSize: 12,
           border: `1px solid ${A.satellite}`, background: A.white,
@@ -62,12 +64,25 @@ export default function FeedbackPanel({ lead, field, onRefined }) {
           boxSizing: "border-box",
         }}
       />
-      <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end", alignItems: "center" }}>
         {history.length > 0 && (
-          <Btn variant="ghost" small onClick={undo}>Undo</Btn>
+          <Btn variant="ghost" small onClick={undo} disabled={refining}>Undo</Btn>
         )}
-        <Btn variant="secondary" small onClick={refine} disabled={refining || !feedback.trim()}>
-          {refining ? "Refining…" : "Refine →"}
+        <div style={{ flex: 1 }} />
+        <Btn
+          variant="ghost" small
+          onClick={() => refine(true)}
+          disabled={refining || !feedback.trim()}
+          title="Runs a fresh web search guided by your feedback, then rewrites"
+        >
+          {refining ? "Searching…" : "Research + Rewrite"}
+        </Btn>
+        <Btn
+          variant="secondary" small
+          onClick={() => refine(false)}
+          disabled={refining || !feedback.trim()}
+        >
+          {refining ? "Refining…" : "Rewrite →"}
         </Btn>
       </div>
 
@@ -79,18 +94,17 @@ export default function FeedbackPanel({ lead, field, onRefined }) {
         }}>
           <span style={{ fontSize: 13, flexShrink: 0 }}>✦</span>
           <div style={{ flex: 1, fontSize: 12, color: "#166534" }}>
-            <strong>Stored in memory</strong> — will influence future drafts automatically.
+            <strong>Stored in memory</strong>
+            {reSearched && " · ran fresh research"}
+            {" "}— will influence future drafts automatically.
           </div>
           <button
             onClick={() => setStoredDismissed(true)}
             style={{
               background: "none", border: "none", cursor: "pointer",
-              color: "#15803d", fontSize: 16, padding: "0 2px",
-              fontFamily: "inherit", flexShrink: 0, lineHeight: 1,
+              color: "#15803d", fontSize: 16, padding: "0 2px", lineHeight: 1,
             }}
-          >
-            ×
-          </button>
+          >×</button>
         </div>
       )}
     </div>

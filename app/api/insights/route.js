@@ -1,159 +1,242 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { leads, accounts, refinementExamples } from "@/lib/schema";
-import { desc } from "drizzle-orm";
+import { leads, accounts } from "@/lib/schema";
+import { isNull } from "drizzle-orm";
 import { APOLLO_PRODUCT_CONTEXT } from "@/lib/apollo-context";
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-20250514";
 
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "icloud.com",
+  "me.com", "mac.com", "live.com", "msn.com", "aol.com", "protonmail.com",
+  "pm.me", "hey.com", "fastmail.com",
+]);
+
+const INDIA_CITIES = [
+  "bangalore", "bengaluru", "mumbai", "delhi", "hyderabad", "pune",
+  "chennai", "kolkata", "noida", "gurgaon", "gurugram", "ahmedabad",
+];
+
+function isPersonalEmail(email) {
+  if (!email) return false;
+  const domain = email.split("@")[1]?.toLowerCase() ?? "";
+  return PERSONAL_EMAIL_DOMAINS.has(domain);
+}
+
+function extractTier(extraContext) {
+  return extraContext?.match(/Tier:\s*([^·\n]+)/i)?.[1]?.trim().toUpperCase() ?? null;
+}
+
+function isIndiaLead(extraContext, hq) {
+  const loc = (extraContext?.match(/Location:\s*([^·\n]+)/i)?.[1] ?? "").toLowerCase();
+  const hqStr = (hq ?? "").toLowerCase();
+  return (
+    loc.includes("india") || INDIA_CITIES.some(c => loc.includes(c)) ||
+    hqStr.includes("india") || INDIA_CITIES.some(c => hqStr.includes(c))
+  );
+}
+
+function isGitHubEnriched(extraContext) {
+  return !!(extraContext?.match(/GitHub Co:\s*([^·\n]+)/i)?.[1]?.trim());
+}
+
+function hasPaidOrgWarning(extraContext) {
+  return extraContext?.includes("⚠️ Org has paid members") ?? false;
+}
+
 // GET /api/insights
-//
-// Synthesizes patterns across all outreach data:
-// - Company metadata (industry, headcount, companyType) across all accounts
-// - Lead signal types and outcomes (sent, replied, etc.)
-// - Refinement examples — what the rep has been editing and why
-// Returns conversational text insights from Claude.
+// Returns computed pipeline stats immediately.
+// Add ?analyze=true to also get an AI lead-flow narrative.
 
-export async function GET() {
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const analyze = searchParams.get("analyze") === "true";
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 503 });
-  }
 
-  try {
-    // Gather all accounts with metadata
-    const allAccounts = await db.select({
+  // ── Fetch raw data ──────────────────────────────────────────────────────────
+  const [allLeads, allAccounts] = await Promise.all([
+    db.select({
+      id: leads.id,
+      accountId: leads.accountId,
+      email: leads.email,
+      signalType: leads.signalType,
+      outreachStatus: leads.outreachStatus,
+      draftStatus: leads.draftStatus,
+      extraContext: leads.extraContext,
+      createdAt: leads.createdAt,
+      sentAt: leads.sentAt,
+      deletedAt: leads.deletedAt,
+    }).from(leads),
+    db.select({
       id: accounts.id,
-      company: accounts.company,
       industry: accounts.industry,
       headcount: accounts.headcount,
       companyType: accounts.companyType,
-    }).from(accounts);
+      hq: accounts.hq,
+    }).from(accounts),
+  ]);
 
-    // Gather all leads with outreach status
-    const allLeads = await db.select({
-      id: leads.id,
-      accountId: leads.accountId,
-      name: leads.name,
-      title: leads.title,
-      signalType: leads.signalType,
-      outreachStatus: leads.outreachStatus,
-      emailSubject: leads.emailSubject,
-      emailDraft: leads.emailDraft,
-      draftStatus: leads.draftStatus,
-      sentAt: leads.sentAt,
-      deletedAt: leads.deletedAt,
-    }).from(leads);
+  const accountMap = Object.fromEntries(allAccounts.map(a => [a.id, a]));
+  const activeLeads = allLeads.filter(l => !l.deletedAt);
+  const deletedLeads = allLeads.filter(l => l.deletedAt);
 
-    // Gather recent refinement examples (last 20, newest first)
-    const examples = await db.select().from(refinementExamples)
-      .orderBy(desc(refinementExamples.createdAt))
-      .limit(20);
+  // ── Funnel ──────────────────────────────────────────────────────────────────
+  const generated = activeLeads.filter(l => l.draftStatus === "done").length;
+  const sent = activeLeads.filter(l =>
+    l.outreachStatus === "sent" || l.outreachStatus === "replied"
+  ).length;
+  const replied = activeLeads.filter(l => l.outreachStatus === "replied").length;
+  const inQueue = activeLeads.filter(l => l.draftStatus === "idle").length;
 
-    // Build a compact data summary to pass to Claude
-    const accountMap = Object.fromEntries(allAccounts.map(a => [a.id, a]));
+  // ── Ingest velocity ─────────────────────────────────────────────────────────
+  const now = Date.now();
+  const MS_7D  = 7  * 24 * 60 * 60 * 1000;
+  const MS_30D = 30 * 24 * 60 * 60 * 1000;
+  const last7d  = activeLeads.filter(l => l.createdAt && (now - new Date(l.createdAt).getTime()) < MS_7D).length;
+  const last30d = activeLeads.filter(l => l.createdAt && (now - new Date(l.createdAt).getTime()) < MS_30D).length;
 
-    // Industry breakdown
-    const industryCounts = {};
-    const headcountCounts = {};
-    const companyTypeCounts = {};
-    for (const a of allAccounts) {
-      if (a.industry) industryCounts[a.industry] = (industryCounts[a.industry] ?? 0) + 1;
-      if (a.headcount) headcountCounts[a.headcount] = (headcountCounts[a.headcount] ?? 0) + 1;
-      if (a.companyType) companyTypeCounts[a.companyType] = (companyTypeCounts[a.companyType] ?? 0) + 1;
-    }
+  // ── Signal types ────────────────────────────────────────────────────────────
+  const signalCounts = {};
+  for (const l of activeLeads) {
+    const k = l.signalType ?? "unknown";
+    signalCounts[k] = (signalCounts[k] ?? 0) + 1;
+  }
 
-    // Separate active vs deleted leads
-    const activeLeads = allLeads.filter(l => !l.deletedAt);
-    const deletedLeads = allLeads.filter(l => l.deletedAt);
+  // ── Tier breakdown ──────────────────────────────────────────────────────────
+  const tierCounts = {};
+  for (const l of activeLeads) {
+    const t = extractTier(l.extraContext) ?? "unknown";
+    tierCounts[t] = (tierCounts[t] ?? 0) + 1;
+  }
 
-    // Lead outcomes by industry
-    const sentLeads = activeLeads.filter(l => l.outreachStatus === "sent" || l.outreachStatus === "replied");
-    const totalByIndustry = {};
-    for (const l of activeLeads) {
-      const acct = accountMap[l.accountId];
-      const ind = acct?.industry ?? "unknown";
-      totalByIndustry[ind] = (totalByIndustry[ind] ?? 0) + 1;
-    }
+  // ── Email type ──────────────────────────────────────────────────────────────
+  let personalEmailCount = 0;
+  let corporateEmailCount = 0;
+  let noEmailCount = 0;
+  for (const l of activeLeads) {
+    if (!l.email) { noEmailCount++; continue; }
+    if (isPersonalEmail(l.email)) personalEmailCount++;
+    else corporateEmailCount++;
+  }
 
-    // Deleted leads by industry — qualification discard rate per segment
-    const deletedByIndustry = {};
-    const deletedBySignalType = {};
-    for (const l of deletedLeads) {
-      const acct = accountMap[l.accountId];
-      const ind = acct?.industry ?? "unknown";
-      deletedByIndustry[ind] = (deletedByIndustry[ind] ?? 0) + 1;
-      deletedBySignalType[l.signalType] = (deletedBySignalType[l.signalType] ?? 0) + 1;
-    }
+  // ── Special lead types ──────────────────────────────────────────────────────
+  let siCount = 0;
+  let indiaCount = 0;
+  let paidOrgCount = 0;
+  let githubEnrichedCount = 0;
+  for (const l of activeLeads) {
+    const acct = accountMap[l.accountId];
+    if (acct?.companyType === "consultancy") siCount++;
+    if (isIndiaLead(l.extraContext, acct?.hq)) indiaCount++;
+    if (hasPaidOrgWarning(l.extraContext)) paidOrgCount++;
+    if (isGitHubEnriched(l.extraContext)) githubEnrichedCount++;
+  }
 
-    // Signal type breakdown (active leads only)
-    const signalCounts = {};
-    for (const l of activeLeads) {
-      signalCounts[l.signalType] = (signalCounts[l.signalType] ?? 0) + 1;
-    }
+  // ── Industries ──────────────────────────────────────────────────────────────
+  const industryCounts = {};
+  for (const a of allAccounts) {
+    if (a.industry) industryCounts[a.industry] = (industryCounts[a.industry] ?? 0) + 1;
+  }
+  const topIndustries = Object.entries(industryCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
 
-    // Sent email subjects (for theme analysis) — cap at 20
-    const sentSubjects = sentLeads
-      .filter(l => l.emailSubject)
-      .slice(0, 20)
-      .map(l => {
-        const acct = accountMap[l.accountId];
-        return `[${acct?.industry ?? "?"}] ${l.emailSubject}`;
-      });
+  // ── Discard rate by signal ───────────────────────────────────────────────────
+  const discardBySignal = {};
+  for (const l of deletedLeads) {
+    const k = l.signalType ?? "unknown";
+    discardBySignal[k] = (discardBySignal[k] ?? 0) + 1;
+  }
 
-    // Refinement themes — what feedback the rep gave
-    const refinementFeedbacks = examples.map(e => `"${e.feedback}" (${e.field})`);
+  const stats = {
+    funnel: {
+      total: activeLeads.length,
+      inQueue,
+      generated,
+      sent,
+      replied,
+      discarded: deletedLeads.length,
+    },
+    ingest: {
+      last7d,
+      last30d,
+      signals: Object.entries(signalCounts).sort((a, b) => b[1] - a[1]),
+    },
+    leadProfile: {
+      tiers: Object.entries(tierCounts).sort((a, b) => b[1] - a[1]),
+      emailTypes: { personal: personalEmailCount, corporate: corporateEmailCount, unknown: noEmailCount },
+      special: { si: siCount, india: indiaCount, paidOrgWarning: paidOrgCount, githubEnriched: githubEnrichedCount },
+    },
+    topIndustries,
+    discard: {
+      total: deletedLeads.length,
+      bySignal: Object.entries(discardBySignal).sort((a, b) => b[1] - a[1]),
+    },
+    generatedAt: new Date().toISOString(),
+  };
 
-    const dataBlock = [
-      `TOTAL ACCOUNTS: ${allAccounts.length}`,
-      `ACTIVE LEADS: ${activeLeads.length}`,
-      `DELETED LEADS (rep discarded as unqualified): ${deletedLeads.length}`,
-      `SENT/REPLIED LEADS: ${sentLeads.length}`,
-      "",
-      `INDUSTRY BREAKDOWN (accounts with metadata):`,
-      Object.entries(industryCounts).sort((a,b) => b[1]-a[1]).map(([k,v]) => `  ${k}: ${v}`).join("\n") || "  (none yet)",
-      "",
-      `HEADCOUNT BREAKDOWN:`,
-      Object.entries(headcountCounts).sort((a,b) => b[1]-a[1]).map(([k,v]) => `  ${k}: ${v}`).join("\n") || "  (none yet)",
-      "",
-      `COMPANY TYPE BREAKDOWN:`,
-      Object.entries(companyTypeCounts).sort((a,b) => b[1]-a[1]).map(([k,v]) => `  ${k}: ${v}`).join("\n") || "  (none yet)",
-      "",
-      `SIGNAL TYPE BREAKDOWN (active leads):`,
-      Object.entries(signalCounts).sort((a,b) => b[1]-a[1]).map(([k,v]) => `  ${k}: ${v}`).join("\n") || "  (none yet)",
-      "",
-      `DELETED LEADS BY INDUSTRY (rep discarded):`,
-      Object.entries(deletedByIndustry).sort((a,b) => b[1]-a[1]).map(([k,v]) => `  ${k}: ${v}`).join("\n") || "  (none yet)",
-      "",
-      `DELETED LEADS BY SIGNAL TYPE:`,
-      Object.entries(deletedBySignalType).sort((a,b) => b[1]-a[1]).map(([k,v]) => `  ${k}: ${v}`).join("\n") || "  (none yet)",
-      "",
-      `SENT EMAIL SUBJECTS (sample):`,
-      sentSubjects.length > 0 ? sentSubjects.map(s => `  ${s}`).join("\n") : "  (none yet)",
-      "",
-      `RECENT REP REFINEMENT FEEDBACK (instructions the rep gave to the AI to improve its drafts — these reflect the rep's style preferences, not problems with the rep):`,
-      refinementFeedbacks.length > 0 ? refinementFeedbacks.map(f => `  ${f}`).join("\n") : "  (none yet)",
-    ].join("\n");
+  // ── AI narrative (on demand only) ───────────────────────────────────────────
+  if (!analyze || !apiKey) {
+    return NextResponse.json({ stats });
+  }
 
-    const prompt = [
-      `You are an analyst for an Apollo GraphQL sales rep using an outreach tool called Voyager 1. The tool uses AI to generate outreach drafts; the rep then refines them by giving feedback to the AI. The refinement feedback listed below is the rep's instructions TO the AI — it reflects the rep's style preferences, not mistakes the rep is making. Below is aggregated data about the leads and accounts in the rep's pipeline.`,
-      "",
-      APOLLO_PRODUCT_CONTEXT,
-      "",
-      `DATA SUMMARY:`,
-      dataBlock,
-      "",
-      `Write a concise, conversational intelligence brief (4–6 short paragraphs, no bullet lists) covering:`,
-      `1. What types of companies and industries dominate this rep's active pipeline — and what that means for Apollo fit`,
-      `2. What the deleted (discarded) leads reveal about which segments or signal types the rep is filtering out — and whether that pattern makes sense`,
-      `3. What the email subjects and outreach themes suggest about what's landing`,
-      `4. What the rep's refinement feedback (instructions they gave to the AI) reveals about their preferred outreach style — what tone, length, or angle they consistently push the AI toward`,
-      `5. One or two concrete recommendations: where to focus more effort, or what types of leads to stop spending time on`,
-      "",
-      `Be specific and data-driven. Reference the actual numbers. If the data is too sparse to draw conclusions, say so clearly and suggest what additional data would make this more useful. Do not use bullet points or headers — write in plain paragraphs.`,
-    ].join("\n");
+  const dataBlock = [
+    `PIPELINE FUNNEL:`,
+    `  Total active leads: ${stats.funnel.total}`,
+    `  In queue (unworked): ${stats.funnel.inQueue}`,
+    `  Draft generated: ${stats.funnel.generated}`,
+    `  Sent: ${stats.funnel.sent}`,
+    `  Replied: ${stats.funnel.replied}`,
+    `  Discarded as unqualified: ${stats.funnel.discarded}`,
+    ``,
+    `INGEST VELOCITY:`,
+    `  New leads last 7 days: ${stats.ingest.last7d}`,
+    `  New leads last 30 days: ${stats.ingest.last30d}`,
+    ``,
+    `LEAD SOURCES (signal type → count):`,
+    stats.ingest.signals.map(([k, v]) => `  ${k}: ${v}`).join("\n") || "  (none)",
+    ``,
+    `PLAN TIER BREAKDOWN (active leads):`,
+    stats.leadProfile.tiers.map(([k, v]) => `  ${k}: ${v}`).join("\n") || "  (none)",
+    ``,
+    `EMAIL TYPE:`,
+    `  Corporate email: ${stats.leadProfile.emailTypes.corporate}`,
+    `  Personal email (gmail etc.): ${stats.leadProfile.emailTypes.personal}`,
+    ``,
+    `SPECIAL LEAD TYPES:`,
+    `  Consultancy / SI: ${stats.leadProfile.special.si}`,
+    `  India-based (offshore): ${stats.leadProfile.special.india}`,
+    `  Paid-org warning (free signup, org has paid members): ${stats.leadProfile.special.paidOrgWarning}`,
+    `  De-anonymized via GitHub: ${stats.leadProfile.special.githubEnriched}`,
+    ``,
+    `TOP INDUSTRIES (accounts with metadata):`,
+    stats.topIndustries.map(([k, v]) => `  ${k}: ${v}`).join("\n") || "  (no metadata yet)",
+    ``,
+    `DISCARDS BY SIGNAL TYPE:`,
+    stats.discard.bySignal.map(([k, v]) => `  ${k}: ${v}`).join("\n") || "  (none)",
+  ].join("\n");
 
+  const prompt = [
+    `You are analyzing the inbound lead pipeline for an Apollo GraphQL sales rep. Apollo GraphQL sells GraphOS — a platform for managing GraphQL APIs at scale, including Federation (composing many services into one graph), schema governance, observability, and performance.`,
+    ``,
+    APOLLO_PRODUCT_CONTEXT,
+    ``,
+    `PIPELINE DATA:`,
+    dataBlock,
+    ``,
+    `Write a concise lead flow intelligence brief (4–5 short paragraphs, no headers, no bullet lists). Focus entirely on what the pipeline data reveals about the LEADS — not the rep's behavior. Cover:`,
+    `1. What the ingest volume and signal mix says about where leads are coming from and how fast they are arriving`,
+    `2. What the tier and email type breakdown reveals about the quality and intent of inbound leads — which segments look most promising`,
+    `3. What the discard pattern reveals about which lead types have low conversion potential and may not be worth spending time on`,
+    `4. What the industry mix (if populated) suggests about which verticals are most active`,
+    `5. One concrete recommendation: where to focus effort, or what part of the pipeline deserves more attention`,
+    ``,
+    `Be direct and specific. Reference actual numbers. If the data is too sparse to draw conclusions, say so and suggest what would make this more useful. Do NOT comment on the rep's editing habits, writing style, or personal behavior.`,
+  ].join("\n");
+
+  try {
     const res = await fetch(ANTHROPIC_API, {
       method: "POST",
       headers: {
@@ -163,33 +246,18 @@ export async function GET() {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 1200,
+        max_tokens: 1000,
         messages: [{ role: "user", content: prompt }],
       }),
       signal: AbortSignal.timeout(45000),
     });
 
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(`Anthropic API error ${res.status}: ${err}`);
-    }
-
+    if (!res.ok) throw new Error(`Anthropic API error ${res.status}`);
     const data = await res.json();
-    const insights = data.content?.filter(b => b.type === "text").map(b => b.text).join("") ?? "";
-
-    return NextResponse.json({
-      insights,
-      meta: {
-        totalAccounts: allAccounts.length,
-        activeLeads: activeLeads.length,
-        deletedLeads: deletedLeads.length,
-        sentLeads: sentLeads.length,
-        refinementCount: examples.length,
-        accountsWithMetadata: allAccounts.filter(a => a.industry).length,
-        generatedAt: new Date().toISOString(),
-      },
-    });
+    const narrative = data.content?.filter(b => b.type === "text").map(b => b.text).join("") ?? "";
+    return NextResponse.json({ stats, narrative });
   } catch (err) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    // Return stats even if AI call fails
+    return NextResponse.json({ stats, narrativeError: err.message });
   }
 }

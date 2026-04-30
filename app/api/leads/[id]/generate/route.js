@@ -3,11 +3,11 @@ import { db } from "@/lib/db";
 import { leads, accounts, appSettings, refinementExamples } from "@/lib/schema";
 import { eq, desc } from "drizzle-orm";
 import { APOLLO_PRODUCT_CONTEXT } from "@/lib/apollo-context";
-import { DEFAULT_RULES } from "@/app/api/settings/route";
+import { DEFAULT_RULES, DEFAULT_EMAIL_STRATEGY, DEFAULT_RESEARCH_FOCUS } from "@/app/api/settings/route";
 
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-20250514";
-const RESEARCH_CACHE_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+const RESEARCH_CACHE_MS = 14 * 24 * 60 * 60 * 1000;
 
 export async function POST(request, { params }) {
   const { id } = await params;
@@ -16,12 +16,8 @@ export async function POST(request, { params }) {
     where: eq(leads.id, id),
     with: { account: true },
   });
+  if (!lead) return NextResponse.json({ error: "Lead not found" }, { status: 404 });
 
-  if (!lead) {
-    return NextResponse.json({ error: "Lead not found" }, { status: 404 });
-  }
-
-  // Mark as running
   await db.update(leads)
     .set({ draftStatus: "running", updatedAt: new Date().toISOString() })
     .where(eq(leads.id, id));
@@ -32,19 +28,19 @@ export async function POST(request, { params }) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
 
-    // Fetch writing rules from DB (fall back to defaults if not seeded yet)
-    const settingsRow = await db.query.appSettings.findFirst({ where: eq(appSettings.id, "default") });
-    const rules = settingsRow?.rules ? JSON.parse(settingsRow.rules) : DEFAULT_RULES;
+    // Load all settings in parallel
+    const [settingsRow, examples] = await Promise.all([
+      db.query.appSettings.findFirst({ where: eq(appSettings.id, "default") }),
+      db.select().from(refinementExamples).orderBy(desc(refinementExamples.createdAt)).limit(5),
+    ]);
 
-    // Fetch the 5 most recent refinement examples for few-shot injection
-    const examples = await db.select()
-      .from(refinementExamples)
-      .orderBy(desc(refinementExamples.createdAt))
-      .limit(5);
+    const rules = settingsRow?.rules ? JSON.parse(settingsRow.rules) : DEFAULT_RULES;
+    const emailStrategy = settingsRow?.emailStrategy ?? DEFAULT_EMAIL_STRATEGY;
+    const researchFocus = settingsRow?.researchFocus ?? DEFAULT_RESEARCH_FOCUS;
 
     const { account } = lead;
 
-    // Step 1: Research summary — use cached account research if fresh (< 14 days)
+    // ── Step 1: Research ─────────────────────────────────────────────────────
     const researchAge = account.webResearchAt
       ? Date.now() - new Date(account.webResearchAt).getTime()
       : Infinity;
@@ -54,45 +50,38 @@ export async function POST(request, { params }) {
     if (useCachedResearch) {
       researchSummary = account.webResearch;
     } else {
-      const researchPrompt = buildResearchPrompt(lead, account);
+      const researchPrompt = buildResearchPrompt(lead, account, researchFocus);
       const researchRes = await callClaudeWithSearch(apiKey, researchPrompt);
       const rawResearch = extractText(researchRes);
-      const { summary: parsedSummary, metadata } = parseResearchOutput(rawResearch);
-      researchSummary = parsedSummary;
+      const { summary, metadata } = parseResearchOutput(rawResearch);
+      researchSummary = summary;
 
       const now2 = new Date().toISOString();
-      await db.update(accounts)
-        .set({
-          webResearch: researchSummary,
-          webResearchAt: now2,
-          updatedAt: now2,
-          ...(metadata?.industry && { industry: metadata.industry }),
-          ...(metadata?.headcount && { headcount: metadata.headcount }),
-          ...(metadata?.companyType && { companyType: metadata.companyType }),
-        })
-        .where(eq(accounts.id, account.id));
+      await db.update(accounts).set({
+        webResearch: researchSummary,
+        webResearchAt: now2,
+        updatedAt: now2,
+        ...(metadata?.industry && { industry: metadata.industry }),
+        ...(metadata?.headcount && { headcount: metadata.headcount }),
+        ...(metadata?.companyType && { companyType: metadata.companyType }),
+      }).where(eq(accounts.id, account.id));
     }
 
-    // Step 2: Email + LinkedIn draft
-    const draftPrompt = buildDraftPrompt(lead, account, researchSummary, rules, examples);
+    // ── Step 2: Draft ────────────────────────────────────────────────────────
+    const draftPrompt = buildDraftPrompt(lead, account, researchSummary, rules, emailStrategy, examples);
     const draftRes = await callClaude(apiKey, draftPrompt);
     const draftText = extractText(draftRes);
     const parsed = parseJSON(draftText);
 
     const now = new Date().toISOString();
-    const [result] = await db.update(leads)
-      .set({
-        researchSummary,
-        emailSubject: parsed.email_subject ?? null,
-        emailDraft: parsed.email_body ?? null,
-        linkedinNote: parsed.linkedin_message ?? null,
-        draftStatus: "done",
-        updatedAt: now,
-      })
-      .where(eq(leads.id, id))
-      .returning();
-
-    const generateMs = Date.now() - generateStart;
+    const [result] = await db.update(leads).set({
+      researchSummary,
+      emailSubject: parsed.email_subject ?? null,
+      emailDraft: parsed.email_body ?? null,
+      linkedinNote: parsed.linkedin_message ?? null,
+      draftStatus: "done",
+      updatedAt: now,
+    }).where(eq(leads.id, id)).returning();
 
     return NextResponse.json({
       lead: { ...result, account },
@@ -100,9 +89,9 @@ export async function POST(request, { params }) {
       emailSubject: parsed.email_subject,
       emailDraft: parsed.email_body,
       linkedinNote: parsed.linkedin_message,
-      generateMs,
-      ruleCount: rules.length,
+      generateMs: Date.now() - generateStart,
     });
+
   } catch (err) {
     await db.update(leads)
       .set({ draftStatus: "error", updatedAt: new Date().toISOString() })
@@ -111,41 +100,48 @@ export async function POST(request, { params }) {
   }
 }
 
-function buildResearchPrompt(lead, account) {
-  const lines = [
-    `You are a B2B sales researcher at Apollo GraphQL. Synthesize the following signals about a prospect into a concise 3-5 bullet intelligence briefing. Each bullet should be one sentence — specific, actionable, no fluff. The goal is to support a rep booking an intro call — focus on signals that indicate organizational readiness and buying potential. Return findings directly — do not narrate your process, do not use phrases like "I'll search for", "Let me search", or "Based on my research". Start immediately with the first bullet.`,
-    `SOURCE CITATION REQUIRED: Every bullet that makes a specific factual claim must end with a bracketed source — the domain or publication where you found it. Format: "• [claim]. [source.com]". If you cannot cite a source for a claim, do not include that claim. Examples of correct format: "• Home Depot runs a federated GraphQL gateway. [medium.com/homedepotech]" or "• CEO quoted on AI investment in Q3 earnings. [ir.homedepot.com]". Claims without sources are not permitted.`,
-    "",
-    APOLLO_PRODUCT_CONTEXT,
-    "",
-    `PROSPECT: ${lead.name}${lead.title ? `, ${lead.title}` : ""} at ${account.company}`,
-    account.sourcedVia ? `Note: this prospect works at ${account.sourcedVia}, which is an outsourced provider / vendor working for ${account.company}. Research the end client (${account.company}), not the vendor.` : "",
-    lead.signalType ? `Signal type: ${lead.signalType}` : "",
-    lead.visitedUrls ? `Pages visited:\n${lead.visitedUrls}` : "",
-    lead.extraContext ? `Extra context: ${lead.extraContext}` : "",
-    "",
-    account.webResearch ? `COMPANY RESEARCH (${account.company}):\n${account.webResearch}` : "",
-    account.edgarData ? `FINANCIAL / EARNINGS SIGNALS:\n${account.edgarData}` : "",
-    account.jobSignals ? `JOB SIGNALS: ${account.jobSignals}` : "",
-    account.accountNotes ? `ACCOUNT NOTES: ${account.accountNotes}` : "",
-    account.crEnrichment ? `COMMON ROOM SIGNALS: ${account.crEnrichment}` : "",
-    account.sfContext ? `SALESFORCE CONTEXT: ${account.sfContext}` : "",
-    "",
-    `COMPANY IDENTIFICATION RULE: If the company name looks like a personal Studio workspace (e.g. "[Name]'s Team", "[Name]'s Org", "[username]'s Workspace", or any variation of a personal name + possessive) — STOP. Do not research that name. It is not a real company. Instead, use the prospect's email domain to identify their real employer. A @comcast.net email means they work at Comcast. A @jpmorgan.com email means JPMorgan Chase. Research the real employer from the email domain, not the Studio org name.`,
-    `If the company name looks like an internal team name (e.g. "Platform Team", "API Core", "GraphQL Infra") without a personal possessive, it may be a real org — use the email domain to confirm the parent company.`,
-    `INTERNAL vs PRODUCT CONFUSION RULE: Always research the company as an ENGINEERING ORGANIZATION with internal systems and teams — not as a product or vendor. If the company makes developer tools, observability software, databases, or APIs (e.g. Datadog, Elastic, Stripe, Twilio, MongoDB), do NOT research or reference their own product's features, integrations, or capabilities. Focus entirely on how their internal engineering teams build and operate their own systems. The prospect works at the company — they feel the pain of building at scale internally, not the pain of using their own product.`,
-    ``,
-    RESEARCH_INTEGRITY_RULES,
-    ``,
-    `After your intelligence bullets, append exactly this block (fill in values, do not skip):`,
-    `---METADATA---`,
-    `{"industry":"<fintech|healthcare|defense|logistics|retail|media|saas|consulting|government|manufacturing|other>","headcount":"<1-10|11-50|51-200|201-1000|1000+|unknown>","companyType":"<startup|scaleup|enterprise|consultancy|government|nonprofit|unknown>","salesQuality":"<high|medium|low>","hiddenOrg":"<parent company name or null>"}`,
-  ].filter(Boolean).join("\n");
+// ── Research prompt ───────────────────────────────────────────────────────────
 
-  return [{ role: "user", content: lines }];
+function buildResearchPrompt(lead, account, researchFocus) {
+  return [{
+    role: "user",
+    content: [
+      `You are a B2B sales researcher at Apollo GraphQL. Research this prospect and their company. Return 3-6 specific, citable bullets. Start with the bullets — do not narrate your process.`,
+      ``,
+      `SOURCE CITATION REQUIRED: Every factual bullet must end with [source.com]. No citation = do not include the claim.`,
+      ``,
+      APOLLO_PRODUCT_CONTEXT,
+      ``,
+      `WHAT TO LOOK FOR:\n${researchFocus}`,
+      ``,
+      resolveCompany(lead, account).company
+        ? `PROSPECT: ${lead.name}${lead.title ? `, ${lead.title}` : ""} at ${resolveCompany(lead, account).company}`
+        : `PROSPECT: ${lead.name}${lead.title ? `, ${lead.title}` : ""} — employer unknown (personal email, personal workspace name)`,
+      resolveCompany(lead, account).note ?? "",
+      lead.signalType ? `Signal: ${lead.signalType}` : "",
+      lead.visitedUrls ? `Pages visited on apollographql.com:\n${lead.visitedUrls}` : "",
+      lead.extraContext ? `Context: ${lead.extraContext}` : "",
+      account.webResearch ? `PRIOR RESEARCH:\n${account.webResearch}` : "",
+      account.edgarData ? `FINANCIAL DATA:\n${account.edgarData}` : "",
+      account.jobSignals ? `JOB SIGNALS: ${account.jobSignals}` : "",
+      account.accountNotes ? `ACCOUNT NOTES: ${account.accountNotes}` : "",
+      account.crEnrichment ? `COMMON ROOM SIGNALS: ${account.crEnrichment}` : "",
+      account.sfContext ? `SALESFORCE CONTEXT: ${account.sfContext}` : "",
+      ``,
+      `COMPANY IDENTIFICATION: If the company looks like a personal Studio workspace ("[Name]'s Team", "[Name]'s Org") — use the email domain to identify the real employer instead. Do not research a workspace name as a company.`,
+      `INTERNAL vs PRODUCT: Research this company as an engineering organization with internal systems and teams — not as a vendor. If they make dev tools (Datadog, Stripe, etc.), focus on how their own engineering teams build and operate systems, not on their product's features.`,
+      ``,
+      `INTEGRITY: Only include claims you actually found and can cite. A short truthful brief beats a padded one. If you found nothing specific beyond their email domain, say so.`,
+      ``,
+      `After your bullets, append exactly this block:`,
+      `---METADATA---`,
+      `{"industry":"<fintech|healthcare|saas|retail|media|logistics|defense|consulting|government|manufacturing|other>","headcount":"<1-10|11-50|51-200|201-1000|1000+|unknown>","companyType":"<startup|scaleup|enterprise|consultancy|government|nonprofit|unknown>"}`,
+    ].filter(Boolean).join("\n"),
+  }];
 }
 
-// ── Known SI / consultancy names (lowercase) ─────────────────────────────────
+// ── Draft prompt ──────────────────────────────────────────────────────────────
+
 const KNOWN_SI_NAMES = new Set([
   "accenture", "deloitte", "infosys", "tata consultancy services", "tcs",
   "wipro", "cognizant", "capgemini", "hcl", "hcl technologies",
@@ -159,16 +155,125 @@ const KNOWN_SI_NAMES = new Set([
   "zensar", "cyient", "mastech", "igate",
 ]);
 
-// ── Research prompt instructions (appended to every research prompt) ──────────
-// These are the anti-hallucination guards that must appear after all context.
-const RESEARCH_INTEGRITY_RULES = `
-CRITICAL — INTEGRITY RULES (non-negotiable):
-- Only write bullets based on information you actually found and can cite. If you searched and found nothing about this person's specific work, role, or projects, say "No verifiable signals found for this individual" — do not fill the gap with plausible-sounding details.
-- NEVER infer, guess, or extrapolate what the prospect might be working on. Do not write things like "likely working on X" or "probably using Y for Z" unless it's a direct quote or clearly stated fact from a source.
-- NEVER fabricate a use case, technical problem, or implementation detail. If you don't have a source for it, leave it out.
-- TECHNICAL CLAIMS REQUIRE A SOURCE: If you state a specific technical detail — a URL path, an API endpoint, a product name, a version number, a repository, a framework, an architecture pattern — you must have found it at a real public URL. Do not infer endpoint paths from naming conventions (e.g. do not write "/federation-gateway/graphql" just because that is a common Apollo pattern). If you cannot point to where you found it, do not include it.
-- If the only signals are their email domain and a studio org name, say so. That is honest and useful. A sparse briefing is better than a fabricated one.
-`.trim();
+const INDIA_CITIES = ["bangalore", "bengaluru", "mumbai", "delhi", "hyderabad", "pune", "chennai", "kolkata", "noida", "gurgaon", "gurugram", "ahmedabad"];
+
+// Matches "[anything]'s Team", "[anything]'s Org", "[username]'s Workspace", etc.
+const PERSONAL_WORKSPACE_RE = /^.+?'s\s+(Team|Org|Workspace|Studio|Sandbox|Space|Account)$/i;
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  "gmail.com","yahoo.com","hotmail.com","outlook.com","icloud.com",
+  "me.com","mac.com","live.com","msn.com","aol.com","protonmail.com","pm.me","hey.com",
+]);
+
+// Resolve effective company name and a warning note for personal workspaces
+function resolveCompany(lead, account) {
+  if (!PERSONAL_WORKSPACE_RE.test(account.company ?? "")) {
+    return { company: account.company, note: null };
+  }
+  const emailDomain = lead.email?.split("@")[1]?.toLowerCase() ?? "";
+  const isPersonalEmail = PERSONAL_EMAIL_DOMAINS.has(emailDomain);
+  if (!isPersonalEmail && emailDomain) {
+    // Corporate email → infer employer from domain
+    const employer = emailDomain.split(".")[0]; // "comcast" from comcast.net
+    return {
+      company: emailDomain,
+      note: `IDENTITY NOTE: The Studio org "${account.company}" is a personal workspace, not a real company. This person's email is @${emailDomain}, so their real employer is likely ${employer}. Research ${employer} / ${emailDomain}. Never write "${account.company}" in the email.`,
+    };
+  }
+  // Personal email + personal workspace → unknown employer
+  return {
+    company: null,
+    note: `IDENTITY NOTE: The Studio org "${account.company}" is a personal workspace, not a real company. This person uses a personal email — their real employer is unknown. Do not address them as if they represent a named company. Instead, ask what they are building or where they work.`,
+  };
+}
+
+function buildDraftPrompt(lead, account, researchSummary, rules, emailStrategy, examples = []) {
+  const rulesText = rules.map((r, i) => `${i + 1}. ${r}`).join("\n");
+
+  const emailExamples = examples.filter(e => e.field === "emailDraft");
+  const linkedinExamples = examples.filter(e => e.field === "linkedinNote");
+  const fewShotBlock = [
+    emailExamples.length > 0 && [
+      `STYLE EXAMPLES (what this rep prefers — use as voice reference):`,
+      ...emailExamples.map((e, i) => `[${i + 1}] Feedback given: "${e.feedback}"\nResult: ${e.after}`),
+    ].join("\n"),
+    linkedinExamples.length > 0 && [
+      `LINKEDIN STYLE EXAMPLES:`,
+      ...linkedinExamples.map((e, i) => `[${i + 1}] Feedback: "${e.feedback}"\nResult: ${e.after}`),
+    ].join("\n"),
+  ].filter(Boolean).join("\n\n");
+
+  // Special mode detection
+  const tier = lead.extraContext?.match(/Tier:\s*(\S+)/i)?.[1]?.toUpperCase() ?? null;
+  const isConsultancy = account.companyType === "consultancy" || KNOWN_SI_NAMES.has(account.company?.toLowerCase());
+  const locationStr = (lead.extraContext?.match(/Location:\s*([^·\n]+)/i)?.[1] ?? "").toLowerCase();
+  const hqStr = (account.hq ?? "").toLowerCase();
+  const isIndia = !isConsultancy && (
+    locationStr.includes("india") || INDIA_CITIES.some(c => locationStr.includes(c)) ||
+    hqStr.includes("india") || INDIA_CITIES.some(c => hqStr.includes(c))
+  );
+
+  const specialMode = isConsultancy
+    ? `SPECIAL MODE — CONSULTANCY/SI: Write a short generic email (under 60 words). Acknowledge the signup, note that consultants use Apollo Federation across client engagements, offer a quick call about supporting their client work. Do not reference the SI's own tech stack.`
+    : isIndia
+    ? `SPECIAL MODE — OFFSHORE/INDIA: Write a short practical email (under 60 words). Focus on helping them get more from their current plan and what they unlock at the next tier (Schema Checks, better governance). Developer-friendly tone. No strategic executive pitch.`
+    : tier === "DEVELOPER"
+    ? `TIER CONTEXT: Developer plan — active intent. Focus on what's limiting them now and position the upgrade as the natural next step.`
+    : tier === "FREE"
+    ? `TIER CONTEXT: Free plan — intent varies. If the research shows real signals, treat as a serious prospect. If signals are weak, keep it lighter and curiosity-driven.`
+    : null;
+
+  const { company: effectiveCompany, note: workspaceNote } = resolveCompany(lead, account);
+  const prospectLine = effectiveCompany
+    ? `PROSPECT: ${lead.name}${lead.title ? `, ${lead.title}` : ""} at ${effectiveCompany}`
+    : `PROSPECT: ${lead.name}${lead.title ? `, ${lead.title}` : ""} — employer unknown`;
+
+  const content = [
+    `You are writing a sales email for an Apollo GraphQL rep. Return ONLY valid JSON:`,
+    `{"email_subject":"...","email_body":"...","linkedin_message":"..."}`,
+    ``,
+    APOLLO_PRODUCT_CONTEXT,
+    ``,
+    `STRATEGY:\n${emailStrategy}`,
+    ``,
+    specialMode ?? "",
+    ``,
+    `INTEL BRIEFING (everything Claude found about this prospect and company):\n${researchSummary || "No research available."}`,
+    ``,
+    prospectLine,
+    workspaceNote ?? "",
+    lead.linkedinUrl ? `LinkedIn: ${lead.linkedinUrl}` : "",
+    account.sourcedVia ? `Note: ${account.sourcedVia} is an outsourced vendor for ${effectiveCompany ?? account.company}. Address as practitioner, not decision-maker.` : "",
+    lead.visitedUrls ? `\nPAGES VISITED ON APOLLO.IO:\n${lead.visitedUrls}` : "",
+    account.accountNotes ? `\nACCOUNT NOTES: ${account.accountNotes}` : "",
+    fewShotBlock ? `\n${fewShotBlock}` : "",
+    ``,
+    `HOW MUCH TO WRITE — choose based on what the intel briefing actually contains:`,
+    `• Rich intel (specific exec quote, confirmed tech usage, earnings signal, high-intent page visit like /enterprise or /federation): 100-150 words. Lead hard with the best hook. Make it obvious you did your homework.`,
+    `• Decent context (industry, company scale, domain) but no specific hook: 80-120 words. Ground the email in their business reality. Ask a genuine question about what they are solving. Do not invent specifics.`,
+    `• Sparse (nothing beyond email domain and signup): under 60 words. Acknowledge the signup, ask one open question, offer a call. Nothing fabricated.`,
+    ``,
+    `Pages visited on apollo.io are always a valid hook — if they visited /federation, /enterprise, /pricing, /schema-checks, or any product page, reference it directly.`,
+    ``,
+    `WRITING RULES — follow every one precisely:`,
+    rulesText,
+    ``,
+    `FORBIDDEN EMAIL OPENERS — the first sentence must never start with:`,
+    `  ✗ "I noticed you recently..." / "I noticed you signed up..."`,
+    `  ✗ "I saw that you..." / "I came across..."`,
+    `  ✗ "I wanted to reach out..." / "I'm reaching out because..."`,
+    `  ✗ "Hope this finds you..." / "My name is X from Apollo..."`,
+    `  ✗ "Congratulations on..." / "Thanks for signing up..."`,
+    `Open with the hook itself, or a question, or a direct statement about their situation.`,
+    ``,
+    `INTEGRITY — these override everything:`,
+    `• Never invent a specific technical claim (endpoint, repo, integration, architecture detail) that is not in the intel briefing.`,
+    `• Never state they "are using" or "have implemented" something you did not find evidence of.`,
+    `• Never use an Apollo customer as generic social proof. Only cite a customer if the briefing gives a specific reason to reference them for this prospect.`,
+    `• Using their industry, company scale, and business context is allowed and expected. Inventing specifics is not.`,
+  ].filter(s => s !== null && s !== undefined).join("\n");
+
+  return [{ role: "user", content }];
+}
 
 function parseResearchOutput(text) {
   const parts = text.split(/---METADATA---/i);
@@ -183,136 +288,38 @@ function parseResearchOutput(text) {
   return { summary, metadata };
 }
 
-function buildDraftPrompt(lead, account, researchSummary, rules = [], examples = []) {
-  const rulesText = rules.length > 0
-    ? rules.map((r, i) => `${i + 1}. ${r}`).join("\n")
-    : "1. Write like a human — conversational, specific, never templated";
-
-  // Few-shot examples from past refinements — show the model what this rep actually prefers
-  const emailExamples = examples.filter(e => e.field === "emailDraft");
-  const linkedinExamples = examples.filter(e => e.field === "linkedinNote");
-
-  // Few-shot style examples — "After" shows target voice, "Before" shows what was changed
-  // Note: placed BEFORE rules so rules have higher recency weight and remain authoritative
-  const fewShotBlock = [
-    emailExamples.length > 0 && [
-      `STYLE EXAMPLES — email (the "After" versions show this rep's preferred tone and style):`,
-      ...emailExamples.map((e, i) => [
-        `[${i + 1}] Feedback: "${e.feedback}"`,
-        `After (target style): ${e.after}`,
-      ].join("\n")),
-    ].join("\n"),
-    linkedinExamples.length > 0 && [
-      `STYLE EXAMPLES — LinkedIn:`,
-      ...linkedinExamples.map((e, i) => [
-        `[${i + 1}] Feedback: "${e.feedback}"`,
-        `After (target style): ${e.after}`,
-      ].join("\n")),
-    ].join("\n"),
-  ].filter(Boolean).join("\n\n");
-
-  // Tier-specific strategy injected into the prompt
-  const tier = lead.extraContext?.match(/Tier:\s*(\S+)/i)?.[1]?.toUpperCase() ?? null;
-  const tierGuidance = tier === "DEVELOPER"
-    ? `TIER CONTEXT: This org is on the Developer plan — they are actively using GraphOS and have real intent. Focus the outreach on what's limiting them at current scale and position Standard or Enterprise as the natural next step. Be direct about the upgrade path.`
-    : tier === "FREE" || tier === "FREE_PLAN"
-    ? `TIER CONTEXT: This org is on the Free plan — intent quality varies widely. If the intel briefing shows strong org size, request volume, or team signals, treat them like a serious prospect. If signals are weak, keep the email lighter and focus on curiosity rather than urgency.`
-    : null;
-
-  // Consultancy / SI detection — use generic outreach, don't over-personalize
-  const isConsultancy = account.companyType === "consultancy" || KNOWN_SI_NAMES.has(account.company?.toLowerCase());
-  const consultancyGuidance = isConsultancy
-    ? `CONSULTANCY / SI MODE: This person works at a consultancy or systems integrator. They are likely building on behalf of a client, not for their own company. Do NOT research or reference the consultancy's internal tech stack — it is irrelevant. Write a short, generic email (under 60 words) that: (1) acknowledges they signed up, (2) notes that consultants often use Apollo Federation across client engagements, (3) offers a brief call to discuss how GraphOS could support their client work. Keep it light and open — do not assume what they are building.`
-    : null;
-
-  const content = [
-    `You are writing personalized outreach for an Apollo GraphQL sales rep. Return ONLY valid JSON matching this shape:`,
-    `{"email_subject":"...","email_body":"...","linkedin_message":"..."}`,
-    "",
-    `GOAL: Book a 20-minute intro call. Not to pitch every feature — just earn a conversation. One specific hook, one clear ask. Never reference more than one product feature. If the intel briefing includes an executive quote or earnings signal about AI investment, data platform, or digital transformation — lead with that as the hook. Specific quotes from earnings calls or 10-Ks are highly effective openers.`,
-    "",
-    APOLLO_PRODUCT_CONTEXT,
-    "",
-    consultancyGuidance ?? tierGuidance ?? "",
-    "",
-    `INTEL BRIEFING:\n${researchSummary}`,
-    "",
-    `PROSPECT: ${lead.name}${lead.title ? `, ${lead.title}` : ""} at ${account.company}`,
-    account.sourcedVia ? `Note: this prospect's employer is ${account.sourcedVia} — an outsourced provider working for ${account.company}. Address them in that context: they're a practitioner/implementor, not the final decision maker. The outreach goal is ${account.company}.` : "",
-    lead.linkedinUrl ? `LinkedIn: ${lead.linkedinUrl}` : "",
-    account.accountNotes ? `\nACCOUNT NOTES: ${account.accountNotes}` : "",
-    account.crEnrichment ? `\nCOMMON ROOM SIGNALS: ${account.crEnrichment}` : "",
-    account.sfContext ? `\nSALESFORCE CONTEXT: ${account.sfContext}` : "",
-    lead.visitedUrls ? `\nPAGES VISITED: ${lead.visitedUrls}` : "",
-    fewShotBlock ? `\n${fewShotBlock}` : "",
-    "",
-    `WRITING RULES — follow every one of these precisely. These override everything above:`,
-    rulesText,
-    ``,
-    `ANTI-HALLUCINATION RULES — these override everything, including style guidance above:`,
-    `- NEVER mention a specific technical use case, feature, problem, or implementation unless it is explicitly stated verbatim in the INTEL BRIEFING with a clear source. Do not reach into your training knowledge about what GraphQL or GraphOS is "typically used for." If it is not in the briefing, it does not go in the email.`,
-    `- NEVER name a customer in the email unless that company appears in the APOLLO CUSTOMERS list above AND the intel briefing gives a specific reason to reference them. Do not use customers as generic social proof — it reads as templated and is often irrelevant.`,
-    `- SPARSE BRIEFING RULE: If the intel briefing is sparse, says "No verifiable signals found", or only mentions their plan tier and org name — write a SHORT email (under 60 words, body only) that: (1) acknowledges the signup by name, (2) asks one genuine open question about what they are building or trying to solve, (3) offers a brief call. Do NOT invent a hook, feature angle, use case, or customer reference. A short honest email outperforms a long fabricated one.`,
-  ].filter(Boolean).join("\n");
-
-  return [{ role: "user", content }];
-}
-
-// Plain Claude call — used for the draft step (no tools needed)
 async function callClaude(apiKey, messages) {
   const res = await fetch(ANTHROPIC_API, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({ model: MODEL, max_tokens: 1500, messages }),
     signal: AbortSignal.timeout(30000),
   });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Anthropic API error ${res.status}: ${err}`);
-  }
-
+  if (!res.ok) throw new Error(`Anthropic API error ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
-// Claude with web search — used for the research step
-// Handles tool_use loop: if Claude searches, we pass results back and get final answer
 async function callClaudeWithSearch(apiKey, messages) {
   const makeCall = (msgs) => fetch(ANTHROPIC_API, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 2000,
+      model: MODEL, max_tokens: 2000,
       tools: [{ type: "web_search_20250305", name: "web_search" }],
       messages: msgs,
     }),
     signal: AbortSignal.timeout(60000),
   }).then(async r => {
-    if (!r.ok) { const err = await r.text(); throw new Error(`Anthropic API error ${r.status}: ${err}`); }
+    if (!r.ok) throw new Error(`Anthropic API error ${r.status}: ${await r.text()}`);
     return r.json();
   });
 
   let data = await makeCall(messages);
 
-  // Handle tool_use: Claude searched — pass results back and get the final synthesized answer
   if (data.stop_reason === "tool_use") {
     const toolResults = data.content
       .filter(b => b.type === "tool_use")
-      .map(b => ({
-        type: "tool_result",
-        tool_use_id: b.id,
-        content: b.content ? JSON.stringify(b.content) : "No results",
-      }));
-
+      .map(b => ({ type: "tool_result", tool_use_id: b.id, content: b.content ? JSON.stringify(b.content) : "No results" }));
     data = await makeCall([
       ...messages,
       { role: "assistant", content: data.content },
@@ -323,8 +330,8 @@ async function callClaudeWithSearch(apiKey, messages) {
   return data;
 }
 
-function extractText(response) {
-  return response.content?.filter(b => b.type === "text").map(b => b.text).join("") ?? "";
+function extractText(res) {
+  return res.content?.filter(b => b.type === "text").map(b => b.text).join("") ?? "";
 }
 
 function parseJSON(text) {

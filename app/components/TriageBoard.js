@@ -28,7 +28,7 @@ function SignalBadge({ type }) {
 }
 
 function StatusDot({ status }) {
-  const colors = { done: "#16a34a", running: A.horizon, error: "#dc2626", idle: A.satellite };
+  const colors = { done: "#16a34a", running: A.horizon, researching: A.horizon, drafting: A.horizon, briefed: "#2563eb", error: "#dc2626", idle: A.satellite };
   return (
     <div style={{
       width: 8, height: 8, borderRadius: "50%",
@@ -66,6 +66,28 @@ function extractGitHubLocation(extraContext) {
   return match ? match[1].trim() : null;
 }
 
+const INDIA_CITIES = ["bangalore", "bengaluru", "mumbai", "delhi", "hyderabad", "pune", "chennai", "kolkata", "noida", "gurgaon", "gurugram", "ahmedabad"];
+const DEMO_ORG_RE = /\b(demo|test|sample|example|qa|staging|sandbox|fake|dummy|trial|placeholder|lorem|foobar|acme)\b/i;
+const PERSONAL_WORKSPACE_RE = /^.+?'s\s+(Team|Org|Workspace|Studio|Sandbox|Space|Account)$/i;
+
+function isDemoLead(lead) {
+  const org = extractStudioOrg(lead.extraContext) ?? "";
+  const company = lead.account?.company ?? "";
+  const name = lead.name ?? "";
+  return DEMO_ORG_RE.test(org) || DEMO_ORG_RE.test(company) || DEMO_ORG_RE.test(name);
+}
+
+function isIndiaLead(lead) {
+  const locationStr = (lead.extraContext?.match(/Location:\s*([^·\n]+)/i)?.[1] ?? "").toLowerCase();
+  const hqStr = (lead.account?.hq ?? "").toLowerCase();
+  return (
+    locationStr.includes("india") ||
+    INDIA_CITIES.some(c => locationStr.includes(c)) ||
+    hqStr.includes("india") ||
+    INDIA_CITIES.some(c => hqStr.includes(c))
+  );
+}
+
 function formatEngagementDate(dateStr) {
   if (!dateStr) return null;
   const date = new Date(dateStr);
@@ -92,16 +114,20 @@ function accountMeta(account) {
 }
 
 function TriageCard({ lead, onGenerate, onDiscard, generating }) {
-  const isRunning = lead.draftStatus === "running";
+  const isRunning = lead.draftStatus === "running" || lead.draftStatus === "researching" || lead.draftStatus === "drafting";
   const isDone = lead.draftStatus === "done";
   const isError = lead.draftStatus === "error";
+  const isBriefed = lead.draftStatus === "briefed";
   const isIdle = lead.draftStatus === "idle";
   const tier = extractTier(lead.extraContext);
   const studioOrg = extractStudioOrg(lead.extraContext);
   const paidOrgWarning = hasPaidOrgWarning(lead.extraContext);
   const ghCompany = extractGitHubCompany(lead.extraContext);
   const ghLocation = extractGitHubLocation(lead.extraContext);
-  const isConsultancy = lead.account?.companyType === "consultancy";
+  const isDemo = isDemoLead(lead);
+  const isPersonalWorkspace = !isDemo && PERSONAL_WORKSPACE_RE.test(lead.account?.company ?? "");
+  const isConsultancy = !isDemo && !isPersonalWorkspace && lead.account?.companyType === "consultancy";
+  const isIndia = !isDemo && !isConsultancy && isIndiaLead(lead);
   const meta = accountMeta(lead.account);
   const engagedOn = formatEngagementDate(lead.lastSignalAt ?? lead.createdAt);
 
@@ -109,8 +135,8 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
     <div style={{
       display: "flex", alignItems: "center", gap: 10,
       padding: "10px 14px",
-      background: isDone ? "#f0fdf4" : A.white,
-      border: `1px solid ${isDone ? "#bbf7d0" : isError ? "#fecaca" : A.satellite}`,
+      background: isDone ? "#f0fdf4" : isBriefed ? "#eff6ff" : A.white,
+      border: `1px solid ${isDone ? "#bbf7d0" : isBriefed ? "#bfdbfe" : isError ? "#fecaca" : A.satellite}`,
       borderRadius: 8, transition: "border-color 0.15s",
     }}>
       <StatusDot status={lead.draftStatus} />
@@ -147,9 +173,24 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
           {studioOrg}
         </span>
       )}
+      {isDemo && (
+        <span style={{ fontSize: 11, color: "#991b1b", background: "#fff1f2", border: "1px solid #fecaca", borderRadius: 4, padding: "1px 5px", flexShrink: 0, fontWeight: 600 }} title="Looks like a demo or test account — discard it.">
+          Demo
+        </span>
+      )}
+      {isPersonalWorkspace && (
+        <span style={{ fontSize: 11, color: "#6b7280", background: "#f3f4f6", border: "1px solid #d1d5db", borderRadius: 4, padding: "1px 5px", flexShrink: 0, fontWeight: 600 }} title="Personal Studio workspace — employer unknown. Claude will use email domain or ask.">
+          Personal
+        </span>
+      )}
       {isConsultancy && (
         <span style={{ fontSize: 11, color: "#6b21a8", background: "#f3e8ff", border: "1px solid #d8b4fe", borderRadius: 4, padding: "1px 5px", flexShrink: 0, fontWeight: 600 }} title="Consultancy or SI — likely building on behalf of a client. Generic email will be generated.">
           SI
+        </span>
+      )}
+      {isIndia && (
+        <span style={{ fontSize: 11, color: "#1d4ed8", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 4, padding: "1px 5px", flexShrink: 0, fontWeight: 600 }} title="India-based lead — adoption-focused email will be generated, not strategic outreach.">
+          IN
         </span>
       )}
       {paidOrgWarning && (
@@ -171,8 +212,13 @@ function TriageCard({ lead, onGenerate, onDiscard, generating }) {
         {isDone && (
           <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 600 }}>Ready ✓</span>
         )}
+        {isBriefed && (
+          <span style={{ fontSize: 12, color: "#2563eb", fontWeight: 600 }}>Brief ready →</span>
+        )}
         {isRunning && (
-          <span style={{ fontSize: 12, color: A.horizon }}>Generating…</span>
+          <span style={{ fontSize: 12, color: A.horizon }}>
+            {lead.draftStatus === "researching" ? "Researching…" : lead.draftStatus === "drafting" ? "Drafting…" : "Generating…"}
+          </span>
         )}
         {isError && (
           <Btn variant="ghost" small onClick={() => onGenerate(lead.id)} disabled={generating}>
