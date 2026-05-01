@@ -69,6 +69,90 @@ function extractGitHubLocation(extraContext) {
 const INDIA_CITIES = ["bangalore", "bengaluru", "mumbai", "delhi", "hyderabad", "pune", "chennai", "kolkata", "noida", "gurgaon", "gurugram", "ahmedabad"];
 const DEMO_ORG_RE = /\b(demo|test|sample|example|qa|staging|sandbox|fake|dummy|trial|placeholder|lorem|foobar|acme)\b/i;
 const PERSONAL_WORKSPACE_RE = /^.+?'s\s+(Team|Org|Workspace|Studio|Sandbox|Space|Account)$/i;
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  "gmail.com","yahoo.com","hotmail.com","outlook.com","icloud.com",
+  "me.com","mac.com","live.com","msn.com","aol.com","protonmail.com","pm.me","hey.com",
+]);
+
+// Mirror of server-side resolveCompany — used to pre-fill the confirmation panel
+function resolveDisplayCompany(lead, account) {
+  if (!PERSONAL_WORKSPACE_RE.test(account?.company ?? "")) {
+    return { company: account?.company ?? "", isResolved: false, domain: null };
+  }
+  const emailDomain = lead.email?.split("@")[1]?.toLowerCase() ?? "";
+  const isPersonalEmail = PERSONAL_EMAIL_DOMAINS.has(emailDomain);
+  if (!isPersonalEmail && emailDomain) {
+    return { company: emailDomain, isResolved: true, domain: emailDomain, workspaceName: account.company };
+  }
+  return { company: "", isResolved: false, domain: null, workspaceName: account.company, unknownEmployer: true };
+}
+
+function ConfirmPanel({ lead, onConfirm, onCancel, saving }) {
+  const resolved = resolveDisplayCompany(lead, lead.account ?? {});
+  const [company, setCompany] = useState(resolved.company);
+
+  return (
+    <div style={{
+      margin: "2px 0 6px 0",
+      background: "#fffbf5",
+      border: `1px solid ${A.horizon}`,
+      borderRadius: 8,
+      padding: "14px 16px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 12,
+    }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: A.horizonDark, letterSpacing: "0.03em" }}>
+        Confirm before generating
+      </div>
+
+      {/* Company field */}
+      <div>
+        <label style={{ fontSize: 11, fontWeight: 600, color: A.textMuted, display: "block", marginBottom: 4 }}>
+          COMPANY
+        </label>
+        {resolved.isResolved && (
+          <div style={{ fontSize: 11, color: A.horizon, marginBottom: 5 }}>
+            ⚠️ Personal Studio org "{resolved.workspaceName}" — using email domain @{resolved.domain}. Correct the company name if needed.
+          </div>
+        )}
+        {resolved.unknownEmployer && (
+          <div style={{ fontSize: 11, color: A.textMuted, marginBottom: 5 }}>
+            Personal email + personal workspace — employer unknown. Enter company name if you know it.
+          </div>
+        )}
+        <input
+          value={company}
+          onChange={e => setCompany(e.target.value)}
+          placeholder="Company name…"
+          style={{
+            width: "100%", padding: "7px 10px", borderRadius: 6, fontSize: 13,
+            border: `1px solid ${A.satellite}`, outline: "none", color: A.text,
+            fontFamily: "inherit", boxSizing: "border-box",
+            background: A.white,
+          }}
+          onFocus={e => e.target.style.borderColor = A.horizon}
+          onBlur={e => e.target.style.borderColor = A.satellite}
+        />
+      </div>
+
+      {/* Lead info — read-only summary */}
+      <div style={{ display: "flex", gap: 20, fontSize: 12, color: A.textMuted, flexWrap: "wrap" }}>
+        <span><b style={{ color: A.text }}>Lead</b> {lead.name}{lead.title ? ` · ${lead.title}` : ""}</span>
+        {lead.email && <span><b style={{ color: A.text }}>Email</b> {lead.email}</span>}
+        {lead.signalType && <span><b style={{ color: A.text }}>Signal</b> {lead.signalType.replace(/_/g, " ")}</span>}
+      </div>
+
+      {/* Actions */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <Btn variant="ghost" small onClick={onCancel} disabled={saving}>Cancel</Btn>
+        <Btn variant="primary" small onClick={() => onConfirm(company)} disabled={saving}>
+          {saving ? "Saving…" : "Confirm & Generate →"}
+        </Btn>
+      </div>
+    </div>
+  );
+}
 
 function isDemoLead(lead) {
   const org = extractStudioOrg(lead.extraContext) ?? "";
@@ -278,6 +362,8 @@ export default function TriageBoard() {
   const [syncResult, setSyncResult] = useState(null);
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState("date_desc");
+  const [confirmingId, setConfirmingId] = useState(null); // lead.id waiting for confirmation
+  const [confirmSaving, setConfirmSaving] = useState(false);
 
   const fetchQueue = useCallback(async () => {
     try {
@@ -312,6 +398,39 @@ export default function TriageBoard() {
       setLeads(ls => ls.map(l => l.id === id ? { ...l, draftStatus: "error" } : l));
     } finally {
       setGeneratingIds(s => { const n = new Set(s); n.delete(id); return n; });
+    }
+  }
+
+  // Show confirmation panel before generating — lets rep verify/correct company identity
+  function requestGenerate(lead) {
+    setConfirmingId(lead.id);
+  }
+
+  async function confirmAndGenerate(lead, confirmedCompany) {
+    setConfirmSaving(true);
+    try {
+      // If rep edited the company name, persist it to the account first
+      const originalCompany = lead.account?.company ?? "";
+      const companyChanged = confirmedCompany && confirmedCompany !== originalCompany;
+      if (companyChanged && lead.account?.id) {
+        const res = await fetch(`/api/accounts/${lead.account.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ company: confirmedCompany }),
+        });
+        if (res.ok) {
+          // Update local state so the card shows the new company name immediately
+          setLeads(ls => ls.map(l =>
+            l.accountId === lead.account.id
+              ? { ...l, account: { ...l.account, company: confirmedCompany } }
+              : l
+          ));
+        }
+      }
+    } finally {
+      setConfirmSaving(false);
+      setConfirmingId(null);
+      generateOne(lead.id);
     }
   }
 
@@ -486,7 +605,14 @@ export default function TriageBoard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {doneLeads.map(lead => (
-              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generatingIds.has(lead.id)} />
+              <div key={lead.id}>
+                <TriageCard lead={lead} onGenerate={id => requestGenerate(lead)} onDiscard={discardLead} generating={generatingIds.has(lead.id)} />
+                {confirmingId === lead.id && (
+                  <ConfirmPanel lead={lead} saving={confirmSaving}
+                    onConfirm={company => confirmAndGenerate(lead, company)}
+                    onCancel={() => setConfirmingId(null)} />
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -503,7 +629,7 @@ export default function TriageBoard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {runningLeads.map(lead => (
-              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generatingIds.has(lead.id)} />
+              <TriageCard key={lead.id} lead={lead} onGenerate={id => requestGenerate(lead)} onDiscard={discardLead} generating={generatingIds.has(lead.id)} />
             ))}
           </div>
         </div>
@@ -520,7 +646,14 @@ export default function TriageBoard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {errorLeads.map(lead => (
-              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generatingIds.has(lead.id)} />
+              <div key={lead.id}>
+                <TriageCard lead={lead} onGenerate={id => requestGenerate(lead)} onDiscard={discardLead} generating={generatingIds.has(lead.id)} />
+                {confirmingId === lead.id && (
+                  <ConfirmPanel lead={lead} saving={confirmSaving}
+                    onConfirm={company => confirmAndGenerate(lead, company)}
+                    onCancel={() => setConfirmingId(null)} />
+                )}
+              </div>
             ))}
           </div>
         </div>
@@ -537,7 +670,14 @@ export default function TriageBoard() {
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {idleLeads.map(lead => (
-              <TriageCard key={lead.id} lead={lead} onGenerate={generateOne} onDiscard={discardLead} generating={generatingIds.has(lead.id)} />
+              <div key={lead.id}>
+                <TriageCard lead={lead} onGenerate={id => requestGenerate(lead)} onDiscard={discardLead} generating={generatingIds.has(lead.id)} />
+                {confirmingId === lead.id && (
+                  <ConfirmPanel lead={lead} saving={confirmSaving}
+                    onConfirm={company => confirmAndGenerate(lead, company)}
+                    onCancel={() => setConfirmingId(null)} />
+                )}
+              </div>
             ))}
           </div>
         </div>
