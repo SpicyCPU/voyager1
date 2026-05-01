@@ -128,7 +128,8 @@ function buildResearchPrompt(lead, account, researchFocus) {
       account.crEnrichment ? `COMMON ROOM SIGNALS: ${account.crEnrichment}` : "",
       account.sfContext ? `SALESFORCE CONTEXT: ${account.sfContext}` : "",
       ``,
-      `COMPANY IDENTIFICATION: If the company looks like a personal Studio workspace ("[Name]'s Team", "[Name]'s Org") — use the email domain to identify the real employer instead. Do not research a workspace name as a company.`,
+      `EMAIL = GOLDEN RECORD: The signup email domain is the authoritative employer. If the email is @jci.com, the employer IS jci.com (Johnson Controls). If @comcast.net, the employer IS Comcast. Look up the domain first to confirm the company name — one search for the domain is enough. Do NOT search for this person on GitHub/LinkedIn to figure out where they work. The signup email already tells you.`,
+      `COMPANY IDENTIFICATION: If the company looks like a personal Studio workspace ("[Name]'s Team", "[Name]'s Org") — use the email domain to identify the real employer. Do not research the workspace name as a company.`,
       `INTERNAL vs PRODUCT: Research this company as an engineering organization with internal systems and teams — not as a vendor. If they make dev tools (Datadog, Stripe, etc.), focus on how their own engineering teams build and operate systems, not on their product's features.`,
       ``,
       `INTEGRITY: Only include claims you actually found and can cite. A short truthful brief beats a padded one. If you found nothing specific beyond their email domain, say so.`,
@@ -172,11 +173,10 @@ function resolveCompany(lead, account) {
   const emailDomain = lead.email?.split("@")[1]?.toLowerCase() ?? "";
   const isPersonalEmail = PERSONAL_EMAIL_DOMAINS.has(emailDomain);
   if (!isPersonalEmail && emailDomain) {
-    // Corporate email → infer employer from domain
-    const employer = emailDomain.split(".")[0]; // "comcast" from comcast.net
+    // Corporate email → employer is CONFIRMED by the signup email domain, no searching needed
     return {
       company: emailDomain,
-      note: `IDENTITY NOTE: The Studio org "${account.company}" is a personal workspace, not a real company. This person's email is @${emailDomain}, so their real employer is likely ${employer}. Research ${employer} / ${emailDomain}. Never write "${account.company}" in the email.`,
+      note: `EMPLOYER CONFIRMED BY SIGNUP EMAIL: This person signed up with @${emailDomain}. That domain IS their employer — do not search for their company elsewhere. Look up ${emailDomain} to identify the company name, then research that company. The Studio org "${account.company}" is a personal workspace name — never use it in the email.`,
     };
   }
   // Personal email + personal workspace → unknown employer
