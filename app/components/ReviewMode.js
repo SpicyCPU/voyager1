@@ -8,6 +8,7 @@ import IntelPanel from "./IntelPanel";
 import LeadSourceCard from "./LeadSourceCard";
 import ContextPanel from "./ContextPanel";
 import FeedbackPanel from "./FeedbackPanel";
+import DraftChatPanel from "./DraftChatPanel";
 import CompletionScreen from "./CompletionScreen";
 import { DraftPill } from "./ui/StatusPill";
 
@@ -382,6 +383,9 @@ export default function ReviewMode({ lead: initialLead, queueIds, currentIndex }
             )}
           </div>
         )}
+
+        {/* Reasoning chat */}
+        <DraftChatPanel lead={lead} />
 
         {/* Action bar */}
         <div style={{
