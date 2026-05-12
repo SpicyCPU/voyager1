@@ -120,7 +120,7 @@ function buildResearchPrompt(lead, account, researchFocus) {
       resolveCompany(lead, account).note ?? "",
       lead.signalType ? `Signal: ${lead.signalType}` : "",
       lead.visitedUrls ? `Pages visited on apollographql.com:\n${lead.visitedUrls}` : "",
-      lead.extraContext ? `Context: ${lead.extraContext}` : "",
+      lead.extraContext ? `PRODUCT USAGE SIGNALS (Omni data — what this person is actually doing in GraphOS):\n${parseExtraContextForLLM(lead.extraContext) || lead.extraContext}` : "",
       account.webResearch ? `PRIOR RESEARCH:\n${account.webResearch}` : "",
       account.edgarData ? `FINANCIAL DATA:\n${account.edgarData}` : "",
       account.jobSignals ? `JOB SIGNALS: ${account.jobSignals}` : "",
@@ -139,6 +139,101 @@ function buildResearchPrompt(lead, account, researchFocus) {
       `{"industry":"<fintech|healthcare|saas|retail|media|logistics|defense|consulting|government|manufacturing|other>","headcount":"<1-10|11-50|51-200|201-1000|1000+|unknown>","companyType":"<startup|scaleup|enterprise|consultancy|government|nonprofit|unknown>"}`,
     ].filter(Boolean).join("\n"),
   }];
+}
+
+// ── Omni signal interpreter ───────────────────────────────────────────────────
+// Converts the dot-separated extraContext string into LLM-friendly signal descriptions.
+// Each bullet explains WHAT the signal is and WHY it matters for the pitch.
+
+function parseExtraContextForLLM(extraContext) {
+  if (!extraContext) return null;
+  const parts = extraContext.split(" · ");
+  const lines = [];
+
+  for (const part of parts) {
+    const tierMatch = part.match(/^Tier:\s*(\S+)/i);
+    if (tierMatch) {
+      const tier = tierMatch[1].toUpperCase();
+      const desc = {
+        FREE: "Free plan — evaluating or casual usage. Intent varies; treat as lighter prospect unless other signals are strong.",
+        DEVELOPER: "Developer plan — active development. Approaching production, natural upgrade candidate.",
+        TEAM: "Team plan — paid, collaborative. Real commitment; pitch governance and scale features.",
+        BUSINESS: "Business plan — paid, org-scale. Established GraphOS user; pitch enterprise and advanced features.",
+        ENTERPRISE: "Enterprise plan — top tier. Focus on expansion, professional services, or strategic alignment.",
+      }[tier] || `${tier} plan`;
+      lines.push(`• Subscription tier: ${tier} — ${desc}`);
+      continue;
+    }
+
+    if (/^Router:\s*yes/i.test(part)) {
+      lines.push(`• Using Apollo Router: YES — they are running or actively building with Apollo Router (Federation prerequisite). Hook on Router capabilities, performance, or federation benefits.`);
+      continue;
+    }
+
+    const fedMatch = part.match(/^(\d+)\s+federated\s+graph/i);
+    if (fedMatch) {
+      const n = parseInt(fedMatch[1]);
+      lines.push(`• Federated graphs: ${n} — significant Federation investment. ${n > 1 ? `Multiple graphs = distributed teams or domains; governance and schema management pain is likely.` : `Single federated graph — early Federation adopter.`}`);
+      continue;
+    }
+
+    const subgraphMatch = part.match(/^(\d+)\s+subgraph/i);
+    if (subgraphMatch) {
+      const n = parseInt(subgraphMatch[1]);
+      lines.push(`• Subgraphs: ${n} — schema split across ${n} service${n !== 1 ? "s" : ""}. ${n >= 5 ? "Complex graph topology — governance, schema checks, and breaking change detection are high-value." : "Early-stage federation setup."}`);
+      continue;
+    }
+
+    const usersMatch = part.match(/^([\d,]+)\s+active\s+user/i);
+    if (usersMatch) {
+      const n = parseInt(usersMatch[1].replace(/,/g, ""));
+      lines.push(`• Active users (last 30d): ${n} — ${n >= 20 ? "substantial team adoption; pitch org-wide governance features" : n >= 5 ? "growing team; collaboration features relevant" : "small team or solo use"}.`);
+      continue;
+    }
+
+    if (/req\/mo/i.test(part)) {
+      const isMillion = /M\s*req/i.test(part);
+      lines.push(`• Request volume: ${part} — ${isMillion ? "production-scale traffic. This is a serious production deployment — lead with reliability, performance, and enterprise SLAs." : "moderate traffic. Active but not yet at scale."}`);
+      continue;
+    }
+
+    if (/^Router\s+active\s+last\s+7d/i.test(part)) {
+      lines.push(`• Router active last 7 days: YES — real traffic is flowing through Router right now. This is a live production signal, not just setup activity.`);
+      continue;
+    }
+
+    if (/^Schema\s+Checks:\s*yes/i.test(part)) {
+      lines.push(`• Schema Checks: ENABLED — they are using schema validation in CI/CD (a paid GraphOS feature). They value safe schema evolution; governance and breaking change tooling are high-relevance topics.`);
+      continue;
+    }
+
+    if (/^Connectors:\s*yes/i.test(part)) {
+      lines.push(`• Apollo Connectors: ENABLED — wrapping REST APIs as subgraphs without custom resolvers. They are actively using this feature; you can reference it directly in the email.`);
+      continue;
+    }
+
+    const proposalMatch = part.match(/^(\d+)\s+proposal/i);
+    if (proposalMatch) {
+      const n = parseInt(proposalMatch[1]);
+      lines.push(`• Schema Proposals (last 30d): ${n} — active schema governance workflow. ${n >= 3 ? "High proposal volume = collaborative schema process in place; governance tooling is very relevant." : "Schema proposals in use."}`);
+      continue;
+    }
+
+    if (/^Persisted\s+Queries/i.test(part)) {
+      const pqMatch = part.match(/([\d,]+)\s+ops/i);
+      const opsStr = pqMatch ? `${pqMatch[1]} operations` : "operations";
+      lines.push(`• Persisted Queries: ${opsStr} last 30d — using PQ for security and performance in production. Live production feature usage.`);
+      continue;
+    }
+
+    const explorerMatch = part.match(/^Explorer:\s*(.+)/i);
+    if (explorerMatch) {
+      lines.push(`• Last Explorer query: ${explorerMatch[1]} — recently active in Apollo Explorer. Platform engagement is current.`);
+      continue;
+    }
+  }
+
+  return lines.length > 0 ? lines.join("\n") : null;
 }
 
 // ── Draft prompt ──────────────────────────────────────────────────────────────
@@ -227,6 +322,8 @@ function buildDraftPrompt(lead, account, researchSummary, rules, emailStrategy, 
     ? `PROSPECT: ${lead.name}${lead.title ? `, ${lead.title}` : ""} at ${effectiveCompany}`
     : `PROSPECT: ${lead.name}${lead.title ? `, ${lead.title}` : ""} — employer unknown`;
 
+  const productSignals = parseExtraContextForLLM(lead.extraContext);
+
   const content = [
     `You are writing a sales email for an Apollo GraphQL rep. Return ONLY valid JSON:`,
     `{"email_subject":"...","email_body":"...","linkedin_message":"..."}`,
@@ -238,6 +335,10 @@ function buildDraftPrompt(lead, account, researchSummary, rules, emailStrategy, 
     specialMode ?? "",
     ``,
     `INTEL BRIEFING (everything Claude found about this prospect and company):\n${researchSummary || "No research available."}`,
+    ``,
+    productSignals
+      ? `PRODUCT USAGE SIGNALS (what this person is actually doing inside GraphOS — use these to write a specific, accurate email):\n${productSignals}`
+      : "",
     ``,
     prospectLine,
     workspaceNote ?? "",
@@ -253,6 +354,7 @@ function buildDraftPrompt(lead, account, researchSummary, rules, emailStrategy, 
     `• Sparse (nothing beyond email domain and signup): under 60 words. Acknowledge the signup, ask one open question, offer a call. Nothing fabricated.`,
     ``,
     `Pages visited on apollo.io are always a valid hook — if they visited /federation, /enterprise, /pricing, /schema-checks, or any product page, reference it directly.`,
+    `PRODUCT SIGNALS ARE GROUND TRUTH: The product usage signals above come directly from the platform database — they are facts, not inferences. If it says "Router: yes", they ARE using Router. If it says "3 federated graphs", they HAVE 3 federated graphs. Reference these directly and specifically in the email — they are the strongest hook you have. If signals show Schema Checks, Connectors, or Persisted Queries, those are live features the prospect is actively using right now.`,
     ``,
     `WRITING RULES — follow every one precisely:`,
     rulesText,
