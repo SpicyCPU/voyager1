@@ -45,7 +45,7 @@ export async function POST(request, { params }) {
     `IMPORTANT: The product usage signals below come directly from the GraphOS platform database — they are hard facts about what this account is actually doing, not inferences. When the rep asks what data you have, describe these signals specifically and accurately.`,
     ``,
     `FORMATTING RULE: If you perform a web search to answer this question, end your response with a blank line followed by:`,
-    `FINDING: [one concise bullet starting with •, including a source citation in brackets, e.g. • Company X migrated to microservices in 2024 [source.com]]`,
+    `FINDING: [one concise bullet starting with •, including the full source URL in brackets, e.g. • Company X migrated to microservices in 2024 [https://techblog.company.com/post]]`,
     `Only include a FINDING block when you actually searched the web. Never include it for reasoning about existing context.`,
     ``,
     `LEAD:`,

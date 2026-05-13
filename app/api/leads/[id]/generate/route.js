@@ -109,7 +109,7 @@ function buildResearchPrompt(lead, account, researchFocus) {
     content: [
       `You are a B2B sales researcher at Apollo GraphQL. Research this prospect and their company. Return 3-6 specific, citable bullets. Start with the bullets — do not narrate your process.`,
       ``,
-      `SOURCE CITATION REQUIRED: Every factual bullet must end with [source.com]. No citation = do not include the claim.`,
+      `SOURCE CITATION REQUIRED: Every factual bullet must end with the full source URL in brackets, e.g. [https://techblog.company.com/post]. No citation = do not include the claim.`,
       ``,
       APOLLO_PRODUCT_CONTEXT,
       ``,
