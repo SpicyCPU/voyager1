@@ -18,7 +18,9 @@ export default function FeedbackPanel({ lead, field, onRefined }) {
     setStoredDismissed(false);
     setReSearched(false);
 
-    const currentText = field === "emailDraft" ? lead.emailDraft : lead.linkedinNote;
+    const currentText = field === "emailDraft" ? lead.emailDraft
+      : field === "emailSubject" ? lead.emailSubject
+      : lead.linkedinNote;
     const capturedFeedback = feedback;
     setHistory(h => [...h, currentText]);
     setFeedback("");
@@ -56,7 +58,10 @@ export default function FeedbackPanel({ lead, field, onRefined }) {
       <textarea
         value={feedback}
         onChange={e => setFeedback(e.target.value)}
-        placeholder={`e.g. "Make it shorter" · "Lead with the job posting signal" · "Find their recent funding and use it as a hook"`}
+        placeholder={field === "emailSubject"
+          ? `e.g. "Make it a question" · "Lead with their company name" · "More specific, less generic"`
+          : `e.g. "Make it shorter" · "Lead with the job posting signal" · "Find their recent funding and use it as a hook"`
+        }
         style={{
           width: "100%", padding: "8px 10px", borderRadius: 6, fontSize: 12,
           border: `1px solid ${A.satellite}`, background: A.white,
@@ -69,14 +74,16 @@ export default function FeedbackPanel({ lead, field, onRefined }) {
           <Btn variant="ghost" small onClick={undo} disabled={refining}>Undo</Btn>
         )}
         <div style={{ flex: 1 }} />
-        <Btn
-          variant="ghost" small
-          onClick={() => refine(true)}
-          disabled={refining || !feedback.trim()}
-          title="Runs a fresh web search guided by your feedback, then rewrites"
-        >
-          {refining ? "Searching…" : "Research + Rewrite"}
-        </Btn>
+        {field !== "emailSubject" && (
+          <Btn
+            variant="ghost" small
+            onClick={() => refine(true)}
+            disabled={refining || !feedback.trim()}
+            title="Runs a fresh web search guided by your feedback, then rewrites"
+          >
+            {refining ? "Searching…" : "Research + Rewrite"}
+          </Btn>
+        )}
         <Btn
           variant="secondary" small
           onClick={() => refine(false)}

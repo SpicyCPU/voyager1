@@ -346,6 +346,7 @@ export default function ReviewMode({ lead: initialLead, queueIds, currentIndex }
                     onChange={e => setLead(l => ({ ...l, emailSubject: e.target.value }))}
                     onBlur={e => scheduleAutoSave("emailSubject", e.target.value)}
                   />
+                  <FeedbackPanel lead={lead} field="emailSubject" onRefined={handleRefined} />
                 </div>
                 <div>
                   <label style={{

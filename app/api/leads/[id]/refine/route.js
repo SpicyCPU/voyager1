@@ -20,8 +20,8 @@ export async function POST(request, { params }) {
   const { id } = await params;
   const { field, feedback, currentText, reSearch = false } = await request.json();
 
-  if (!["emailDraft", "linkedinNote"].includes(field)) {
-    return NextResponse.json({ error: "field must be emailDraft or linkedinNote" }, { status: 400 });
+  if (!["emailDraft", "linkedinNote", "emailSubject"].includes(field)) {
+    return NextResponse.json({ error: "field must be emailDraft, emailSubject, or linkedinNote" }, { status: 400 });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -89,23 +89,27 @@ export async function POST(request, { params }) {
 // ── Simple rewrite (no new research) ─────────────────────────────────────────
 
 async function rewriteDraft(apiKey, currentText, feedback, field) {
-  const fieldLabel = field === "emailDraft" ? "sales email body" : "LinkedIn message";
+  const fieldLabel = field === "emailDraft" ? "sales email body"
+    : field === "emailSubject" ? "email subject line"
+    : "LinkedIn message";
+
+  const instruction = field === "emailSubject"
+    ? `Current subject line: ${currentText}\n\nFeedback: ${feedback}\n\nRewrite the subject line applying this feedback. Return only the new subject line — no quotes, no preamble, no explanation. Keep it concise (under 10 words ideally).`
+    : `Current ${fieldLabel}:\n\n${currentText}\n\nFeedback: ${feedback}\n\nRewrite it applying this feedback exactly. Return only the rewritten text — no preamble, no explanation.`;
+
   const res = await fetch(ANTHROPIC_API, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 800,
-      messages: [{
-        role: "user",
-        content: `Current ${fieldLabel}:\n\n${currentText}\n\nFeedback: ${feedback}\n\nRewrite it applying this feedback exactly. Return only the rewritten text — no preamble, no explanation.`,
-      }],
+      max_tokens: field === "emailSubject" ? 60 : 800,
+      messages: [{ role: "user", content: instruction }],
     }),
     signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) throw new Error(`Anthropic error ${res.status}`);
   const data = await res.json();
-  return data.content?.filter(b => b.type === "text").map(b => b.text).join("") ?? currentText;
+  return data.content?.filter(b => b.type === "text").map(b => b.text).join("").trim() ?? currentText;
 }
 
 // ── Feedback-guided web search ────────────────────────────────────────────────
