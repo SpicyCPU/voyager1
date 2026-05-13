@@ -9,12 +9,13 @@ const STARTER_QUESTIONS = [
   "What's uncertain in this email?",
 ];
 
-function Message({ role, content }) {
+function Message({ role, content, finding, canSave, onSave, saved, saving }) {
   const isUser = role === "user";
   return (
     <div style={{
       display: "flex",
-      justifyContent: isUser ? "flex-end" : "flex-start",
+      flexDirection: "column",
+      alignItems: isUser ? "flex-end" : "flex-start",
       marginBottom: 10,
     }}>
       <div style={{
@@ -30,6 +31,36 @@ function Message({ role, content }) {
       }}>
         {content}
       </div>
+      {canSave && (
+        <div style={{ marginTop: 6, maxWidth: "82%" }}>
+          {finding && (
+            <div style={{
+              fontSize: 12, color: A.textMuted, fontStyle: "italic",
+              marginBottom: 5, padding: "4px 8px",
+              background: A.horizonFaint, borderRadius: 5,
+              borderLeft: `3px solid ${A.horizon}`,
+            }}>
+              {finding}
+            </div>
+          )}
+          <button
+            onClick={onSave}
+            disabled={saving || saved}
+            style={{
+              fontSize: 12, fontWeight: 600, padding: "4px 10px",
+              borderRadius: 5, border: `1px solid ${saved ? "#16a34a" : A.horizon}`,
+              background: saved ? "#f0fdf4" : A.horizonFaint,
+              color: saved ? "#16a34a" : A.horizonDark,
+              cursor: saving || saved ? "default" : "pointer",
+              fontFamily: "inherit",
+              opacity: saving ? 0.6 : 1,
+              transition: "all 0.15s",
+            }}
+          >
+            {saved ? "✓ Saved to account" : saving ? "Saving…" : "Save to account context"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -40,6 +71,8 @@ export default function DraftChatPanel({ lead }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // Track save state per message index: { saving: bool, saved: bool }
+  const [saveState, setSaveState] = useState({});
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -58,6 +91,7 @@ export default function DraftChatPanel({ lead }) {
     setMessages([]);
     setInput("");
     setError(null);
+    setSaveState({});
   }, [lead?.id]);
 
   async function send(text) {
@@ -78,12 +112,34 @@ export default function DraftChatPanel({ lead }) {
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error ?? "Request failed");
-      setMessages(m => [...m, { role: "assistant", content: data.reply }]);
+      setMessages(m => [...m, {
+        role: "assistant",
+        content: data.reply,
+        finding: data.finding ?? null,
+        canSave: data.canSave ?? false,
+      }]);
     } catch (e) {
       setError(e.message);
-      setMessages(m => m.slice(0, -1)); // remove the user message on failure
+      setMessages(m => m.slice(0, -1));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function saveFinding(msgIndex, finding) {
+    setSaveState(s => ({ ...s, [msgIndex]: { saving: true, saved: false } }));
+    try {
+      const res = await fetch(`/api/leads/${lead.id}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [], saveFinding: finding }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? "Save failed");
+      setSaveState(s => ({ ...s, [msgIndex]: { saving: false, saved: true } }));
+    } catch (e) {
+      setSaveState(s => ({ ...s, [msgIndex]: { saving: false, saved: false } }));
+      setError(e.message);
     }
   }
 
@@ -147,7 +203,16 @@ export default function DraftChatPanel({ lead }) {
               </div>
             )}
             {messages.map((m, i) => (
-              <Message key={i} role={m.role} content={m.content} />
+              <Message
+                key={i}
+                role={m.role}
+                content={m.content}
+                finding={m.finding}
+                canSave={m.canSave}
+                saved={saveState[i]?.saved ?? false}
+                saving={saveState[i]?.saving ?? false}
+                onSave={() => saveFinding(i, m.finding)}
+              />
             ))}
             {loading && (
               <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 10 }}>
