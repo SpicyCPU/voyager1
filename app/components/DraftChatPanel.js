@@ -104,11 +104,14 @@ export default function DraftChatPanel({ lead }) {
     setMessages(newMessages);
     setLoading(true);
 
+    // Strip UI-only fields (finding, canSave) before sending to the API
+    const apiMessages = newMessages.map(({ role, content }) => ({ role, content }));
+
     try {
       const res = await fetch(`/api/leads/${lead.id}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newMessages }),
+        body: JSON.stringify({ messages: apiMessages }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error ?? "Request failed");
