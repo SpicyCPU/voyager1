@@ -39,27 +39,31 @@ export async function POST(request, { params }) {
 
     const { account } = lead;
 
-    // Run fresh search guided by the feedback
+    // Run fresh search guided by the feedback (treated as a known correction)
     const newResearch = await runFeedbackSearch(apiKey, lead, account, feedback);
 
-    // Merge new research with existing
-    const mergedResearch = [
-      account.webResearch ? `PRIOR RESEARCH:\n${account.webResearch}` : "",
-      newResearch ? `NEW RESEARCH (found based on feedback):\n${newResearch}` : "",
-    ].filter(Boolean).join("\n\n");
-
-    // Save new research back to account
+    // Save only the new research appended to existing — do NOT re-inject the prior
+    // as "PRIOR RESEARCH" because that contaminates future runs with stale claims.
+    // New findings are appended with a date stamp so freshness is visible.
     if (newResearch) {
       const now2 = new Date().toISOString();
+      const dateStamp = now2.slice(0, 10);
+      const existing = account.webResearch?.trim() ?? "";
+      const updated = existing
+        ? `${existing}\n\n[Re-researched ${dateStamp} based on rep correction]\n${newResearch}`
+        : newResearch;
       await db.update(accounts).set({
-        webResearch: mergedResearch,
+        webResearch: updated,
         webResearchAt: now2,
         updatedAt: now2,
       }).where(eq(accounts.id, account.id));
+      // Use the updated research for the rewrite so the rewrite sees the full picture
+      account = { ...account, webResearch: updated };
     }
 
-    // Rewrite the email with merged research + feedback
-    updatedText = await rewriteWithResearch(apiKey, lead, account, currentText, feedback, mergedResearch, field);
+    // Rewrite using only the clean updated research — not a labeled merge
+    const researchForRewrite = account.webResearch ?? newResearch ?? "";
+    updatedText = await rewriteWithResearch(apiKey, lead, account, currentText, feedback, researchForRewrite, field);
 
   } else {
     // ── Rewrite mode: apply feedback to current draft ────────────────────────
@@ -118,10 +122,17 @@ async function runFeedbackSearch(apiKey, lead, account, feedback) {
   const prompt = [{
     role: "user",
     content: [
-      `You are a sales researcher. A rep gave this feedback about a draft email for ${lead.name} at ${account.company}:`,
+      `You are a sales researcher correcting a draft email for ${lead.name} at ${account.company}.`,
+      ``,
+      `The sales rep has flagged this issue with the current draft:`,
       `"${feedback}"`,
       ``,
-      `The rep wants you to find new information that addresses this feedback. Search for it now and return what you find as 2-4 specific, citable bullet points. Each bullet must end with [source.com].`,
+      `IMPORTANT: Treat the rep's feedback as a known correction — they are telling you something in the current research or email is wrong or outdated. Your job is to:`,
+      `1. Search for current, accurate information that reflects the true state of affairs`,
+      `2. Prioritise sources from the last 2 years`,
+      `3. If the rep is correcting a factual error (e.g. a company was acquired, a product was spun off, a person left), find sources that confirm the current accurate state`,
+      ``,
+      `Return 2-4 specific, citable bullet points. Each bullet must end with the full source URL in brackets [https://...]. Do not include bullets you cannot cite.`,
       ``,
       APOLLO_PRODUCT_CONTEXT,
       ``,
@@ -129,8 +140,7 @@ async function runFeedbackSearch(apiKey, lead, account, feedback) {
       lead.visitedUrls ? `Pages visited: ${lead.visitedUrls}` : "",
       lead.extraContext ? `Context: ${lead.extraContext}` : "",
       ``,
-      `Focus your search specifically on what the feedback is asking for. If the feedback asks about their funding, search for funding. If it asks about their CTO, search for their leadership. If it asks for a different angle, find that angle.`,
-      `Return only what you found and can cite. If you found nothing useful, say so honestly.`,
+      `If you find nothing useful, say so honestly rather than padding with generic claims.`,
     ].filter(Boolean).join("\n"),
   }];
 
@@ -145,7 +155,7 @@ async function runFeedbackSearch(apiKey, lead, account, feedback) {
 
 // ── Rewrite with merged research ──────────────────────────────────────────────
 
-async function rewriteWithResearch(apiKey, lead, account, currentText, feedback, mergedResearch, field) {
+async function rewriteWithResearch(apiKey, lead, account, currentText, feedback, research, field) {
   const fieldLabel = field === "emailDraft" ? "sales email body" : "LinkedIn message";
   const res = await fetch(ANTHROPIC_API, {
     method: "POST",
@@ -160,13 +170,21 @@ async function rewriteWithResearch(apiKey, lead, account, currentText, feedback,
           ``,
           `CURRENT DRAFT:\n${currentText}`,
           ``,
-          `REP FEEDBACK: ${feedback}`,
+          `REP CORRECTION: ${feedback}`,
+          `The rep has flagged something in the current draft as incorrect or outdated. You must address this directly.`,
           ``,
-          `UPDATED RESEARCH (including new findings):\n${mergedResearch}`,
+          `UPDATED RESEARCH:\n${research}`,
           ``,
-          `Rewrite the ${fieldLabel} applying the feedback and incorporating any relevant new research findings. Use only what is in the research above — do not fabricate claims. Return only the rewritten text, no preamble.`,
+          `RULES:`,
+          `• The rep's correction takes precedence over anything in the current draft`,
+          `• If the research contains entries marked "[Re-researched ...]", those are the most current — trust them over older bullets`,
+          `• Actively remove from the rewrite any claim the correction or new research invalidates`,
+          `• Do not soften or hedge the correction — if something is wrong, remove it entirely`,
+          `• Use only what is in the research above — do not fabricate new claims`,
+          `• Keep the same rough length unless the feedback asks to change it`,
+          `• Do not start with "I noticed you" or "I saw that you"`,
           ``,
-          `Keep the same rough length unless the feedback specifically asks to change it. Do not start with "I noticed you" or "I saw that you."`,
+          `Return only the rewritten text, no preamble.`,
         ].filter(Boolean).join("\n"),
       }],
     }),
